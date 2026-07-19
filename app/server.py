@@ -3,7 +3,7 @@
 灯光派工系统 · 企业级后端
 ================================
 - 身份:飞书 OAuth 登录(真名+头像)
-- 权限:服务器端 RBAC 强制 —— team(默认)/staff(灯光师)/admin(管理员)
+- 权限:服务器端 RBAC 强制 —— team/staff/lead/admin
 - 数据:SQLite app/dispatch.db(WAL),首启自动从 data.json 迁移 teams+sla
 - 审计:所有变更记录 谁/何时/干了什么
 - 通知:飞书机器人私信(派单/抢单)
@@ -12,12 +12,14 @@
 运行:  python3 app/server.py     → http://<本机IP>:8848
 环境(.env,项目根):
   DISPATCH_APP_ID / DISPATCH_APP_SECRET   「灯光派工」飞书应用凭据(配好后启用真实登录+通知)
-  DISPATCH_BASE_URL                        对外地址,如 http://192.168.1.10:8848(OAuth 回调用)
+  DISPATCH_BASE_URL                        HTTPS 对外地址(OAuth 回调用)
   DISPATCH_HOST / DISPATCH_PORT            默认 0.0.0.0 / 8848
 """
 import json
+import logging
 import os
 import secrets
+import shutil
 import sqlite3
 import threading
 import time
@@ -26,7 +28,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+try:
+    from . import business, service
+except ImportError:
+    import business
+    import service
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parent
@@ -37,7 +46,7 @@ AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
 
 SESSION_DAYS = 30
 TECH_STATUS = ("free", "busy", "check", "rest", "off")
-ORDER_STATUS = ("wait", "working", "done")
+ORDER_STATUS = business.ORDER_STATUS
 ROLES = ("team", "staff", "admin")
 TECH_ROLES = ("灯光师", "学徒")
 SHIFTS = ("早班", "中班", "晚班", "机动")
@@ -66,15 +75,20 @@ load_dotenv()
 APP_ID = os.environ.get("DISPATCH_APP_ID", "").strip()
 APP_SECRET = os.environ.get("DISPATCH_APP_SECRET", "").strip()
 BASE_URL = os.environ.get("DISPATCH_BASE_URL", "").strip().rstrip("/") or "http://localhost:8848"
+COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0720h"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
-DB_PATH = ROOT / ("dispatch-test.db" if TEST_MODE else "dispatch.db")
+SERVER_VERSION = "v0721a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
+    else ROOT / ("dispatch-test.db" if TEST_MODE else "dispatch.db")
 FEISHU_CONFIGURED = bool(APP_ID and APP_SECRET) and not TEST_MODE
 MAX_REQUEST_BYTES = 64 * 1024
 MEDIA_DIR = ROOT / "media"
 MEDIA_MAX_BYTES = 30 * 1024 * 1024
+LOG_DIR = ROOT / "logs"
+BACKUP_DIR = ROOT / "backups"
+PROCESS_STARTED = time.time()
 # 上传 content-type → 落盘扩展名
 MEDIA_EXT = {
     "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a", "audio/aac": "m4a",
@@ -139,7 +153,7 @@ CREATE TABLE IF NOT EXISTS orders(
   task_type TEXT NOT NULL, minutes INTEGER NOT NULL,
   base_time TEXT DEFAULT '', arrive TEXT DEFAULT '',
   assignee_id TEXT DEFAULT '', assignee_name TEXT DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'wait',
+  status TEXT NOT NULL DEFAULT 'pending',
   creator_id TEXT DEFAULT '', creator_name TEXT DEFAULT '',
   note TEXT DEFAULT '', media TEXT DEFAULT '', media_kind TEXT DEFAULT '',
   created_at TEXT,
@@ -293,6 +307,14 @@ def init_db():
                  profile.get("grp", ""), profile.get("lead", 0), now_iso(), now_iso()),
             )
         conn.execute("UPDATE settings SET v='1' WHERE k='bootstrap_used'")
+    business.migrate(conn)
+    if TEST_MODE:
+        conn.execute(
+            "UPDATE users SET approved=1 WHERE open_id LIKE 'test:%'"
+        )
+        conn.execute(
+            "UPDATE users SET team_id=(SELECT id FROM teams ORDER BY id LIMIT 1) WHERE open_id='test:team'"
+        )
     conn.commit()
     conn.close()
 
@@ -319,6 +341,9 @@ def biz_now():
 def today():
     """排班日「今天」:凌晨5点前返回前一天日期,保证跨夜排班不错位。"""
     return biz_now().strftime("%Y-%m-%d")
+
+
+SERVICE = service.DispatchService(db, setting, today, BASE_URL)
 
 
 def parse_ts(s):
@@ -663,6 +688,325 @@ def delete_task_reminder(guid):
     threading.Thread(target=_run, daemon=True).start()
 
 
+def _send_message_now(open_id, text, urgent=False):
+    result = feishu_api(
+        "POST", "/im/v1/messages", token=tenant_token(),
+        query={"receive_id_type": "open_id"},
+        body={"receive_id": open_id, "msg_type": "text",
+              "content": json.dumps({"text": text}, ensure_ascii=False)},
+    )
+    if result.get("code") not in (0, None):
+        raise RuntimeError(result.get("msg") or "飞书消息发送失败")
+    if urgent and setting("urgent_on", "0") == "1":
+        message_id = (result.get("data") or {}).get("message_id")
+        if message_id:
+            urgent_result = feishu_api(
+                "PATCH", f"/im/v1/messages/{message_id}/urgent_app", token=tenant_token(),
+                query={"user_id_type": "open_id"}, body={"user_id_list": [open_id]},
+            )
+            if urgent_result.get("code") not in (0, None):
+                raise RuntimeError(urgent_result.get("msg") or "飞书加急失败")
+
+
+def _create_task_now(recipient_id, payload):
+    order_id = record_id(payload.get("order_id"))
+    if not order_id:
+        return
+    conn = db()
+    order = conn.execute("SELECT status,assignee_id FROM orders WHERE id=?", (order_id,)).fetchone()
+    conn.close()
+    if not order or order["assignee_id"] != recipient_id or order["status"] not in ("assigned", "in_progress"):
+        return
+    due_ms = _order_due_ms(payload.get("date"), payload.get("arrive"))
+    body = {"summary": payload.get("summary") or "派工任务", "description": payload.get("description") or ""}
+    if due_ms:
+        _, minutes = reminder_conf()
+        body["due"] = {"timestamp": str(due_ms), "is_all_day": False}
+        body["reminders"] = [{"relative_fire_minute": minutes}]
+    result = feishu_api(
+        "POST", "/task/v2/tasks", token=tenant_token(),
+        query={"user_id_type": "open_id"}, body=body,
+    )
+    guid = ((result.get("data") or {}).get("task") or {}).get("guid")
+    if not guid:
+        raise RuntimeError(result.get("msg") or "飞书任务创建失败")
+    member_result = feishu_api(
+        "POST", f"/task/v2/tasks/{guid}/add_members", token=tenant_token(),
+        query={"user_id_type": "open_id"},
+        body={"members": [{"id": recipient_id, "role": "assignee", "type": "user"}]},
+    )
+    if member_result.get("code") not in (0, None):
+        raise RuntimeError(member_result.get("msg") or "飞书任务负责人设置失败")
+    conn = db()
+    changed = conn.execute(
+        """UPDATE orders SET feishu_task_guid=?
+           WHERE id=? AND assignee_id=? AND status IN ('assigned','in_progress')""",
+        (guid, order_id, recipient_id),
+    ).rowcount
+    conn.commit()
+    conn.close()
+    if changed != 1:
+        feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
+
+
+def _delete_task_now(payload):
+    guid = (payload.get("guid") or "").strip()
+    if guid:
+        result = feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
+        if result.get("code") not in (0, None):
+            raise RuntimeError(result.get("msg") or "飞书任务删除失败")
+
+
+def process_outbox_once(limit=20):
+    conn = db()
+    conn.execute("BEGIN IMMEDIATE")
+    rows = conn.execute(
+        """SELECT * FROM notification_outbox
+           WHERE status IN ('pending','retry') AND available_at<=?
+           ORDER BY id LIMIT ?""",
+        (now_iso(), limit),
+    ).fetchall()
+    for row in rows:
+        conn.execute("UPDATE notification_outbox SET status='sending' WHERE id=?", (row["id"],))
+    conn.commit()
+    conn.close()
+    for row in rows:
+        error = ""
+        try:
+            payload = json.loads(row["payload"])
+            if not TEST_MODE and FEISHU_CONFIGURED:
+                if row["kind"] == "message":
+                    _send_message_now(row["recipient_id"], payload.get("text") or "", bool(payload.get("urgent")))
+                elif row["kind"] == "task_create":
+                    if setting("reminder_on", "1") == "1":
+                        _create_task_now(row["recipient_id"], payload)
+                elif row["kind"] == "task_delete":
+                    _delete_task_now(payload)
+        except Exception as exc:
+            error = str(exc)[:500]
+        conn = db()
+        if not error:
+            conn.execute(
+                "UPDATE notification_outbox SET status='sent',sent_at=?,last_error='' WHERE id=?",
+                (now_iso(), row["id"]),
+            )
+        else:
+            attempts = int(row["attempts"] or 0) + 1
+            if attempts >= 5:
+                conn.execute(
+                    "UPDATE notification_outbox SET status='failed',attempts=?,last_error=? WHERE id=?",
+                    (attempts, error, row["id"]),
+                )
+            else:
+                available = datetime.now() + timedelta(minutes=2 ** attempts)
+                conn.execute(
+                    """UPDATE notification_outbox SET status='retry',attempts=?,available_at=?,last_error=?
+                       WHERE id=?""",
+                    (attempts, business.format_dt(available), error, row["id"]),
+                )
+        conn.commit()
+        conn.close()
+
+
+_LAST_BACKUP_DAY = ""
+
+
+def backup_database(force=False):
+    global _LAST_BACKUP_DAY
+    if TEST_MODE:
+        return None
+    day = datetime.now().strftime("%Y-%m-%d")
+    if not force and _LAST_BACKUP_DAY == day:
+        return None
+    BACKUP_DIR.mkdir(exist_ok=True)
+    target = BACKUP_DIR / f"dispatch-{datetime.now():%Y%m%d-%H%M%S}.db"
+    source = db()
+    destination = sqlite3.connect(target)
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+    backups = sorted(BACKUP_DIR.glob("dispatch-*.db"), key=lambda path: path.stat().st_mtime)
+    for old_backup in backups[:-30]:
+        old_backup.unlink(missing_ok=True)
+    _LAST_BACKUP_DAY = day
+    return target
+
+
+def run_scheduled_jobs():
+    conn = db()
+    conn.execute("BEGIN IMMEDIATE")
+    now = datetime.now()
+    stamp = business.format_dt(now)
+    try:
+        grace = max(0, min(120, int(setting("book_grace_min", "15") or 15)))
+        if grace:
+            stale = conn.execute(
+                """SELECT * FROM orders WHERE booked=1 AND status IN ('pending','assigned')
+                   AND scheduled_start!='' AND scheduled_start<?""",
+                (business.format_dt(now - timedelta(minutes=grace)),),
+            ).fetchall()
+            for order in stale:
+                conn.execute(
+                    """UPDATE orders SET status='cancelled',cancelled_at=?,cancelled_by='system',
+                       cancel_reason='到点未开始自动释放',version=version+1 WHERE id=?""",
+                    (stamp, order["id"]),
+                )
+                business.add_event(
+                    conn, order["id"], "预约自动释放", None, order["status"], "cancelled",
+                    f"到岗后 {grace} 分钟仍未开始",
+                )
+                business.close_active_transfers(conn, order["id"])
+                if order["feishu_task_guid"]:
+                    business.queue_task_operation(
+                        conn, "task_delete", "",
+                        {"guid": order["feishu_task_guid"], "order_id": order["id"]},
+                        f"order:{order['id']}:task-delete:stale",
+                    )
+                for recipient in {order["creator_id"], order["assignee_id"]} - {"", None}:
+                    business.queue_notification(
+                        conn, recipient,
+                        f"预约已自动释放：#{order['id']} {order['team']} · {order['task_type']}",
+                        f"order:{order['id']}:stale:{recipient}",
+                    )
+
+        remind = max(0, min(1440, int(setting("overrun_remind_min", "30") or 30)))
+        close = max(0, min(1440, int(setting("overrun_close_min", "180") or 180)))
+        running = conn.execute(
+            "SELECT * FROM orders WHERE status='in_progress' AND started_at!=''"
+        ).fetchall()
+        for order in running:
+            started = business.parse_dt(order["started_at"])
+            if not started:
+                continue
+            overdue = (now - started).total_seconds() / 60 - int(order["minutes"] or 30)
+            if close and overdue >= close:
+                conn.execute(
+                    """UPDATE orders SET status='abnormal',abnormal_at=?,abnormal_reason=?,version=version+1
+                       WHERE id=?""",
+                    (stamp, f"超过计划工时 {close} 分钟仍未完成", order["id"]),
+                )
+                conn.execute(
+                    "UPDATE work_sessions SET ended_at=?,end_reason='abnormal' WHERE order_id=? AND ended_at=''",
+                    (stamp, order["id"]),
+                )
+                SERVICE._release_worker(conn, order["assignee_id"])
+                business.close_active_transfers(conn, order["id"])
+                business.add_event(
+                    conn, order["id"], "异常终止", None, "in_progress", "abnormal",
+                    f"超过计划工时 {close} 分钟仍未完成",
+                )
+                for recipient in {order["creator_id"], order["assignee_id"]} - {"", None}:
+                    business.queue_notification(
+                        conn, recipient,
+                        f"工单已异常终止：#{order['id']} {order['team']} · {order['task_type']}，请联系管理员复核",
+                        f"order:{order['id']}:abnormal:{recipient}", urgent=True,
+                    )
+                if order["feishu_task_guid"]:
+                    business.queue_task_operation(
+                        conn, "task_delete", "",
+                        {"guid": order["feishu_task_guid"], "order_id": order["id"]},
+                        f"order:{order['id']}:task-delete:abnormal",
+                    )
+            elif remind and overdue >= remind and not order["overrun_notified"]:
+                conn.execute("UPDATE orders SET overrun_notified=1 WHERE id=?", (order["id"],))
+                business.queue_notification(
+                    conn, order["assignee_id"],
+                    f"任务超时提醒：#{order['id']} {order['team']} · {order['task_type']}，请确认进度",
+                    f"order:{order['id']}:overrun-reminder",
+                )
+
+        active_transfers = conn.execute(
+            """SELECT transfers.*,orders.status order_status,orders.team,orders.task_type,orders.grp,
+                      orders.scheduled_start
+               FROM transfers JOIN orders ON orders.id=transfers.order_id
+               WHERE transfers.status IN ('awaiting_lead','open')"""
+        ).fetchall()
+        expired_transfers = []
+        for transfer in active_transfers:
+            created_at = business.parse_dt(transfer["created_at"])
+            scheduled_start = business.parse_dt(transfer["scheduled_start"])
+            if not created_at:
+                expired_transfers.append(transfer)
+                continue
+            urgent_transfer = (
+                transfer["order_status"] == "in_progress"
+                or bool(scheduled_start and scheduled_start - created_at <= timedelta(hours=2))
+            )
+            deadline = created_at + timedelta(minutes=10 if urgent_transfer else 30)
+            if now >= deadline:
+                expired_transfers.append(transfer)
+        for transfer in expired_transfers:
+            conn.execute(
+                "UPDATE transfers SET status='expired',resolved_at=? WHERE id=?",
+                (stamp, transfer["id"]),
+            )
+            business.add_event(
+                conn, transfer["order_id"], "转包超时", None,
+                transfer["order_status"], transfer["order_status"], f"转包 #{transfer['id']} 未及时处理",
+            )
+            business.queue_notification(
+                conn, transfer["requester_id"],
+                f"转包申请已超时：#{transfer['order_id']} {transfer['team']} · {transfer['task_type']}",
+                f"transfer:{transfer['id']}:expired:requester", urgent=True,
+            )
+            leads = conn.execute(
+                "SELECT open_id FROM users WHERE grp=? AND (lead=1 OR role='admin')", (transfer["grp"],)
+            ).fetchall()
+            for lead in leads:
+                business.queue_notification(
+                    conn, lead["open_id"],
+                    f"转包超时需人工处理：#{transfer['order_id']} {transfer['team']} · {transfer['task_type']}",
+                    f"transfer:{transfer['id']}:expired:{lead['open_id']}", urgent=True,
+                )
+
+        old_uploads = conn.execute(
+            "SELECT id,path FROM uploads WHERE status='pending' AND created_at<?",
+            (business.format_dt(now - timedelta(hours=24)),),
+        ).fetchall()
+        conn.executemany("UPDATE uploads SET status='expired' WHERE id=?", [(row["id"],) for row in old_uploads])
+        conn.execute("DELETE FROM sessions WHERE expires_at<=?", (stamp,))
+        conn.execute(
+            "DELETE FROM notification_outbox WHERE status='sent' AND sent_at<?",
+            (business.format_dt(now - timedelta(days=30)),),
+        )
+        conn.execute(
+            "DELETE FROM notification_outbox WHERE status='failed' AND created_at<?",
+            (business.format_dt(now - timedelta(days=90)),),
+        )
+        conn.execute(
+            "DELETE FROM uploads WHERE status='expired' AND created_at<?",
+            (business.format_dt(now - timedelta(days=30)),),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('scheduler','ok',?)", (stamp,)
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    for upload in old_uploads:
+        path = MEDIA_DIR / os.path.basename(upload["path"])
+        if path.is_file():
+            path.unlink()
+    backup_database()
+
+
+def background_loop(stop_event):
+    next_jobs = 0.0
+    while not stop_event.wait(2):
+        try:
+            process_outbox_once()
+            if time.monotonic() >= next_jobs:
+                run_scheduled_jobs()
+                next_jobs = time.monotonic() + 30
+        except Exception:
+            logging.exception("后台任务执行失败")
+
+
 # ───────────────────────── 会话 ─────────────────────────
 def new_session(open_id):
     sid = secrets.token_urlsafe(32)
@@ -710,52 +1054,10 @@ def upsert_user(info):
 
 # ───────────────────────── 业务 ─────────────────────────
 def user_scope(user):
-    """工单/派单可见与可操作的组:管理员/团队=None(全部),组员/组长=本组名。"""
+    """返回工作人员的数据组范围；管理员和团队使用独立范围规则。"""
     if user["role"] in ("admin", "team"):
         return None
     return (user.get("grp") or "") or "__none__"
-
-
-def _release_stale_bookings(conn):
-    """预约到点 grace 分钟仍未点「开始」→ 自动取消释放人并通知(防约了不用白占)。"""
-    try:
-        grace = int(setting("book_grace_min", "15") or 15)
-    except (TypeError, ValueError):
-        grace = 15
-    if grace <= 0:
-        return  # 规则关闭:不自动释放
-    now = datetime.now()
-    rows = conn.execute(
-        "SELECT * FROM orders WHERE COALESCE(booked,0)=1 AND status IN ('wait','working') "
-        "AND COALESCE(started_at,'')=''").fetchall()
-    released = []
-    for o in rows:
-        try:
-            d = datetime.strptime(f"{o['date']} {o['arrive']}", "%Y-%m-%d %H:%M")
-            if (o["arrive"] or "") < "05:00":
-                d += timedelta(days=1)  # 排班日约定:凌晨时段属次日
-        except (TypeError, ValueError):
-            continue
-        if now <= d + timedelta(minutes=grace):
-            continue
-        conn.execute("DELETE FROM orders WHERE id=?", (o["id"],))
-        if o["assignee_id"]:
-            _release_worker(conn, o["assignee_id"])
-        released.append(dict(o))
-    if released:
-        conn.commit()
-        for o in released:
-            audit_log(None, "自动释放预约",
-                      f"#{o['id']} {o['team']} {o['date']} {o['arrive']} {o['task_type']} 超{grace}分钟未开始")
-            msg = (f"预约已自动释放:{o['date']} {o['arrive']} {o['team']} · {o['task_type']}"
-                   f"(到点 {grace} 分钟未开始)。需要的话请重新下单。")
-            try:
-                if o.get("creator_id"):
-                    notify(o["creator_id"], msg)
-                if o.get("assignee_id") and o.get("assignee_id") != o.get("creator_id"):
-                    notify(o["assignee_id"], msg)
-            except Exception:
-                pass
 
 
 def dn(u):
@@ -773,121 +1075,128 @@ def alias_map(conn):
             for r in conn.execute("SELECT open_id,name,COALESCE(alias,'') alias FROM users")}
 
 
-def _handle_overruns(conn):
-    """开始后超过 计划工时+N分钟 未完成:先提醒一次;再超过 M 分钟自动关单释放人。
-    防止「点了开始忘了点完成」把计时挂十几个小时、人一直占着。"""
-    try:
-        remind = int(setting("overrun_remind_min", "30") or 30)
-    except (TypeError, ValueError):
-        remind = 30
-    try:
-        close = int(setting("overrun_close_min", "180") or 180)
-    except (TypeError, ValueError):
-        close = 180
-    if remind <= 0 and close <= 0:
-        return
-    now = datetime.now()
-    rows = conn.execute(
-        "SELECT * FROM orders WHERE status='working' AND COALESCE(started_at,'')!=''").fetchall()
-    closed, reminded = [], []
-    for o in rows:
-        st = parse_ts(o["started_at"])
-        if not st:
-            continue
-        overdue = (now - st).total_seconds() / 60 - (o["minutes"] or 30)
-        if close > 0 and overdue >= close:
-            conn.execute("UPDATE orders SET status='done',done_at=?,done_note=? WHERE id=?",
-                         (now.strftime("%Y-%m-%d %H:%M:%S"),
-                          f"超时自动关单:开始后超过计划工时 {close} 分钟仍未点完成", o["id"]))
-            if o["assignee_id"]:
-                _release_worker(conn, o["assignee_id"])
-            closed.append(dict(o))
-        elif remind > 0 and overdue >= remind and not o["overrun_notified"]:
-            conn.execute("UPDATE orders SET overrun_notified=1 WHERE id=?", (o["id"],))
-            reminded.append(dict(o))
-    if closed or reminded:
-        conn.commit()
-    for o in closed:
-        audit_log(None, "超时自动关单",
-                  f"#{o['id']} {o['team']} {o['task_type']} 开始于{str(o['started_at'])[5:16]} 超计划{close}分钟未完成")
-        try:
-            if o.get("assignee_id"):
-                notify(o["assignee_id"], f"你的工单已超时自动关单:{o['team']} · {o['task_type']}。"
-                                          f"下次干完记得点「完成」哦。")
-            if o.get("feishu_task_guid"):
-                delete_task_reminder(o["feishu_task_guid"])
-        except Exception:
-            pass
-    for o in reminded:
-        try:
-            if o.get("assignee_id"):
-                notify(o["assignee_id"], f"提醒:{o['team']} · {o['task_type']} 已超过计划工时,"
-                                          f"完成了请点「完成」;确实还在干可以继续,超 "
-                                          f"{setting('overrun_close_min','180')} 分钟会自动关单。")
-        except Exception:
-            pass
-
-
 def api_state(user):
     conn = db()
-    _release_stale_bookings(conn)
-    _handle_overruns(conn)
     amap = alias_map(conn)
-    groups = [dict(r) for r in conn.execute("SELECT id,name,color,sort,COALESCE(auto,0) auto FROM groups ORDER BY sort,id")]
-    staff = [dict(r) for r in conn.execute(
-        """SELECT open_id,name,COALESCE(alias,'') alias,avatar,grp,lead,intern,leave_until,shift,status,task,work_hours
-           FROM users WHERE grp!='' AND role!='team' ORDER BY grp,shift,name""")]
+    settings = {row["k"]: row["v"] for row in conn.execute("SELECT k,v FROM settings")}
+    approved = bool(user.get("approved", 0) or user["role"] == "admin" or settings.get("gate_mode", "open") == "open")
+    me = {k: user.get(k) for k in (
+        "open_id", "name", "avatar", "role", "shift", "status", "task", "grp", "lead", "team_id"
+    )}
+    me["fs_name"] = me["name"]
+    me["name"] = amap.get(user["open_id"], me["name"])
+    me["approved"] = 1 if approved else 0
+    if not approved:
+        conn.close()
+        return {
+            "me": me,
+            "groups": [], "staff": [], "teams": [], "sla": [], "shifts": [], "orders": [],
+            "test_mode": TEST_MODE, "server_version": SERVER_VERSION, "bootstrap_open": False,
+            "rules": {"gate_mode": settings.get("gate_mode", "manual")},
+        }
+
+    all_groups = [dict(r) for r in conn.execute(
+        "SELECT id,name,color,sort,COALESCE(auto,0) auto FROM groups ORDER BY sort,id"
+    )]
+    if user["role"] == "staff":
+        groups = [group for group in all_groups if group["name"] == (user.get("grp") or "")]
+    else:
+        groups = all_groups
+
+    staff_sql = (
+        "SELECT open_id,name,COALESCE(alias,'') alias,avatar,grp,lead,intern,leave_until,"
+        "shift,status,task,work_hours FROM users WHERE grp!='' AND role!='team'"
+    )
+    staff_args = []
+    if user["role"] == "team":
+        staff = []
+    else:
+        if user["role"] == "staff":
+            staff_sql += " AND grp=?"
+            staff_args.append(user.get("grp") or "__none__")
+        staff = [dict(r) for r in conn.execute(staff_sql + " ORDER BY grp,shift,name", staff_args)]
     for s in staff:
         s["fs_name"] = s["name"]
         s["name"] = dn(s)
-    teams = [dict(r) for r in conn.execute("SELECT * FROM teams ORDER BY id")]
-    sla = [dict(r) for r in conn.execute("SELECT * FROM sla ORDER BY grp,id")]
-    shifts = [dict(r) for r in conn.execute("SELECT id,name,start,end FROM shifts ORDER BY sort,id")]
-    scope = user_scope(user)
-    if scope is None:
-        orders = [dict(r) for r in conn.execute(
-            "SELECT * FROM orders WHERE date=? OR status!='done' ORDER BY arrive,id", (today(),))]
+
+    if user["role"] == "team":
+        team_id = business.bound_team_id(user)
+        teams = [dict(r) for r in conn.execute("SELECT * FROM teams WHERE id=?", (team_id,))] if team_id else []
     else:
-        orders = [dict(r) for r in conn.execute(
-            "SELECT * FROM orders WHERE (date=? OR status!='done') AND grp=? ORDER BY arrive,id",
-            (today(), scope))]
+        teams = [dict(r) for r in conn.execute("SELECT * FROM teams ORDER BY id")]
+    if user["role"] == "staff":
+        sla = [dict(r) for r in conn.execute("SELECT * FROM sla WHERE grp=? ORDER BY id", (user.get("grp") or "",))]
+    else:
+        sla = [dict(r) for r in conn.execute("SELECT * FROM sla ORDER BY grp,id")]
+    shifts = [] if user["role"] == "team" else [dict(r) for r in conn.execute(
+        "SELECT id,name,start,end FROM shifts ORDER BY sort,id"
+    )]
+
+    order_where = "(date=? OR status IN ('pending','assigned','in_progress'))"
+    order_args = [today()]
+    if user["role"] == "team":
+        order_where += " AND team_id=?"
+        order_args.append(business.bound_team_id(user) or -1)
+    elif user["role"] != "admin":
+        order_where += " AND grp=?"
+        order_args.append(user.get("grp") or "__none__")
+        if not user.get("lead"):
+            order_where += " AND (status='pending' OR assignee_id=? OR creator_id=?)"
+            order_args.extend((user["open_id"], user["open_id"]))
+    orders = [dict(r) for r in conn.execute(
+        f"SELECT * FROM orders WHERE {order_where} ORDER BY date,arrive,id", order_args
+    )]
     for o in orders:
         if o.get("assignee_id") and o["assignee_id"] in amap:
             o["assignee_name"] = amap[o["assignee_id"]]
         if o.get("creator_id") and o["creator_id"] in amap:
             o["creator_name"] = amap[o["creator_id"]]
-    me = {k: user[k] for k in ("open_id", "name", "avatar", "role", "shift", "status", "task")}
-    me["fs_name"] = me["name"]
-    me["name"] = amap.get(user["open_id"], me["name"])
-    me["grp"] = user.get("grp") or ""
-    me["lead"] = user.get("lead") or 0
-    me["approved"] = 1 if (user.get("approved", 1) or user["role"] == "admin" or setting("gate_mode", "open") == "open") else 0
+    business.attach_transfer_state(conn, orders)
+    skills = []
+    if user["role"] != "team":
+        skill_sql = "SELECT open_id,grp,task_type FROM worker_skills"
+        skill_args = []
+        if user["role"] == "staff":
+            skill_sql += " WHERE grp=?"
+            skill_args.append(user.get("grp") or "")
+        skills = [dict(r) for r in conn.execute(skill_sql, skill_args)]
+
     out = {"me": me, "groups": groups, "staff": staff, "teams": teams, "sla": sla,
-           "shifts": shifts, "orders": orders, "test_mode": TEST_MODE,
+           "shifts": shifts, "orders": orders, "skills": skills, "test_mode": TEST_MODE,
            "server_version": SERVER_VERSION,
-           "bootstrap_open": setting("bootstrap_used") != "1",
+           "bootstrap_open": settings.get("bootstrap_used") != "1",
            "reminder": dict(zip(("on", "minutes"), reminder_conf())),
-           "urgent_on": setting("urgent_on", "0") == "1",
-           "rules": {"book_lock_sla": setting("rule_book_lock_sla", "1"),
-                     "team_cap": setting("book_team_cap", "2"),
-                     "team_day_min": setting("book_team_day_min", "240"),
-                     "grace_min": setting("book_grace_min", "15"),
-                     "max_min": setting("book_max_min", "720"),
-                     "dev_note": setting("rule_dev_note", "1"),
-                     "biange_media": setting("rule_biange_media", "1"),
-                     "done_note": setting("rule_done_note", "1"),
-                     "nav_team": setting("nav_team", ""),
-                     "nav_staff": setting("nav_staff", ""),
-                     "gate_mode": setting("gate_mode", "open"),
-                     "allow_dept_ids": setting("allow_dept_ids", ""),
-                     "overrun_remind_min": setting("overrun_remind_min", "30"),
-                     "overrun_close_min": setting("overrun_close_min", "180")}}
+           "urgent_on": settings.get("urgent_on", "0") == "1",
+           "rules": {"book_lock_sla": settings.get("rule_book_lock_sla", "1"),
+                     "team_cap": settings.get("book_team_cap", "2"),
+                     "team_day_min": settings.get("book_team_day_min", "240"),
+                     "book_horizon_days": settings.get("book_horizon_days", "7"),
+                     "start_early_min": settings.get("start_early_min", "30"),
+                     "grace_min": settings.get("book_grace_min", "15"),
+                     "max_min": settings.get("book_max_min", "720"),
+                     "dev_note": settings.get("rule_dev_note", "1"),
+                     "biange_media": settings.get("rule_biange_media", "1"),
+                     "done_note": settings.get("rule_done_note", "1"),
+                     "nav_team": settings.get("nav_team", ""),
+                     "nav_staff": settings.get("nav_staff", ""),
+                     "gate_mode": settings.get("gate_mode", "open"),
+                     "allow_dept_ids": settings.get("allow_dept_ids", ""),
+                     "overrun_remind_min": settings.get("overrun_remind_min", "30"),
+                     "overrun_close_min": settings.get("overrun_close_min", "180")}}
     if user["role"] == "admin":
         out["users"] = [dict(r) for r in conn.execute(
-            "SELECT open_id,name,COALESCE(alias,'') alias,avatar,role,grp,lead,intern,leave_until,shift,status,last_login,COALESCE(approved,1) approved FROM users ORDER BY role DESC,grp,name")]
+            """SELECT open_id,name,COALESCE(alias,'') alias,avatar,role,grp,lead,intern,leave_until,
+                      shift,status,last_login,COALESCE(approved,0) approved,team_id
+               FROM users ORDER BY role DESC,grp,name""")]
         for u2 in out["users"]:
             u2["fs_name"] = u2["name"]
             u2["name"] = dn(u2)
+        out["operations"] = dict(conn.execute(
+            """SELECT
+                 COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) notification_pending,
+                 COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) notification_failed
+               FROM notification_outbox"""
+        ).fetchone())
     conn.close()
     return out
 
@@ -917,14 +1226,19 @@ def api_schedule(user, params):
         frm = now - timedelta(days=now.weekday())  # 本周一
         to = frm + timedelta(days=6)
     frm_s, to_s = frm.strftime("%Y-%m-%d"), to.strftime("%Y-%m-%d")
-    scope = user_scope(user)
     conn = db()
     sql = ("SELECT id,date,team,room,task_type,grp,arrive,minutes,assignee_id,assignee_name,status,urgent "
            "FROM orders WHERE date>=? AND date<=?")
     args = [frm_s, to_s]
-    if scope is not None:
+    if user["role"] == "team":
+        sql += " AND team_id=?"
+        args.append(business.bound_team_id(user) or -1)
+    elif user["role"] != "admin":
         sql += " AND grp=?"
-        args.append(scope)
+        args.append(user.get("grp") or "__none__")
+        if not user.get("lead"):
+            sql += " AND (status='pending' OR assignee_id=? OR creator_id=?)"
+            args.extend((user["open_id"], user["open_id"]))
     sql += " ORDER BY date,arrive,id"
     rows = [dict(r) for r in conn.execute(sql, args)]
     amap = alias_map(conn)
@@ -941,8 +1255,8 @@ def api_stats(user, params):
     rng = params.get("range") or "30d"
     person = (params.get("person") or "").strip()
     grp = (params.get("group") or "").strip()
-    if user["role"] not in ("admin", "team"):
-        grp = (user.get("grp") or "").strip()  # 组员/组长:统计锁定本组;管理员和团队可看全部组
+    if user["role"] == "staff":
+        grp = (user.get("grp") or "").strip()
     now = biz_now()  # 统计区间按排班日,凌晨不换天
     if rng == "7d":
         frm = (now - timedelta(days=6)).strftime("%Y-%m-%d")
@@ -956,34 +1270,56 @@ def api_stats(user, params):
     conn = db()
     amap = alias_map(conn)
     if person:
+        if user["role"] == "team":
+            conn.close()
+            return 403, "团队账号不能查看个人工作明细"
+        if user["role"] == "staff" and not user.get("lead") and person != user["open_id"]:
+            conn.close()
+            return 403, "只能查看自己的工作明细"
+        if user["role"] == "staff" and user.get("lead"):
+            target = conn.execute("SELECT grp FROM users WHERE open_id=?", (person,)).fetchone()
+            if not target or target["grp"] != (user.get("grp") or ""):
+                conn.close()
+                return 403, "组长只能查看本组人员明细"
         prow = conn.execute("SELECT name,COALESCE(alias,'') alias FROM users WHERE open_id=?", (person,)).fetchone()
+        where = "assignee_id=? AND date>=? AND date<=?"
+        args = [person, frm, to]
+        if user["role"] == "staff":
+            where += " AND grp=?"
+            args.append(user.get("grp") or "")
         rows = [dict(r) for r in conn.execute(
             """SELECT id,date,team,room,task_type,minutes,arrive,status,note,media,media_kind,media2,media2_kind,
                       started_at,done_at
-               FROM orders WHERE assignee_id=? AND date>=? ORDER BY date DESC,arrive DESC""",
-            (person, frm))]
+               FROM orders WHERE """ + where + " ORDER BY date DESC,arrive DESC", args)]
         conn.close()
         for r in rows:
             r["used"] = used_minutes(r.get("started_at"), r.get("done_at"))
         return 200, {"range": rng, "from": frm, "to": to, "person": person,
                      "name": dn(prow) if prow else person, "orders": rows}
-    if grp:
-        rows = [dict(r) for r in conn.execute(
-            """SELECT date,task_type,minutes,status,assignee_id,assignee_name,started_at,done_at
-               FROM orders WHERE date>=? AND grp=?""", (frm, grp))]
-    else:
-        rows = [dict(r) for r in conn.execute(
-            """SELECT date,task_type,minutes,status,assignee_id,assignee_name,started_at,done_at
-               FROM orders WHERE date>=?""", (frm,))]
+    where = "date>=? AND date<=?"
+    args = [frm, to]
+    if user["role"] == "team":
+        where += " AND team_id=?"
+        args.append(business.bound_team_id(user) or -1)
+    elif user["role"] == "staff" and not user.get("lead"):
+        where += " AND assignee_id=?"
+        args.append(user["open_id"])
+    elif grp:
+        where += " AND grp=?"
+        args.append(grp)
+    rows = [dict(r) for r in conn.execute(
+        """SELECT date,task_type,minutes,status,assignee_id,assignee_name,started_at,done_at
+           FROM orders WHERE """ + where, args)]
     conn.close()
-    summary = {"orders": len(rows), "done": 0, "working": 0, "wait": 0, "minutes": 0,
+    summary = {"orders": len(rows), "pending": 0, "assigned": 0, "in_progress": 0,
+               "completed": 0, "cancelled": 0, "abnormal": 0, "minutes": 0,
                "days": len({r["date"] for r in rows}), "people": 0,
                "usedSum": 0.0, "timed": 0}
     by_person, by_type, by_day, people = {}, {}, {}, set()
     for r in rows:
         st, mins = r["status"], (r["minutes"] or 0)
         summary["minutes"] += mins
-        if st in ("done", "working", "wait"):
+        if st in business.ORDER_STATUS:
             summary[st] += 1
         used = used_minutes(r.get("started_at"), r.get("done_at"))
         if used is not None:
@@ -997,29 +1333,33 @@ def api_stats(user, params):
         if used is not None:
             t["usedSum"] += used
             t["timed"] += 1
-        d = by_day.setdefault(r["date"], {"date": r["date"], "orders": 0, "done": 0})
+        d = by_day.setdefault(r["date"], {"date": r["date"], "orders": 0, "completed": 0})
         d["orders"] += 1
-        if st == "done":
-            d["done"] += 1
+        if st == "completed":
+            d["completed"] += 1
         aid = r["assignee_id"]
         if aid:
             people.add(aid)
             p = by_person.setdefault(aid, {"open_id": aid, "name": amap.get(aid) or r["assignee_name"] or aid,
-                                           "orders": 0, "done": 0, "minutes": 0, "types": {}, "lastDate": ""})
+                                           "orders": 0, "completed": 0, "minutes": 0, "types": {}, "lastDate": ""})
             p["orders"] += 1
             p["minutes"] += mins
-            if st == "done":
-                p["done"] += 1
+            if st == "completed":
+                p["completed"] += 1
             p["types"][r["task_type"]] = p["types"].get(r["task_type"], 0) + 1
             if r["date"] > p["lastDate"]:
                 p["lastDate"] = r["date"]
     summary["people"] = len(people)
     summary["avgUsed"] = round(summary["usedSum"] / summary["timed"], 1) if summary["timed"] else None
     bp = []
-    for p in by_person.values():
-        top = max(p["types"].items(), key=lambda kv: kv[1])[0] if p["types"] else ""
-        bp.append({"open_id": p["open_id"], "name": p["name"], "orders": p["orders"],
-                   "done": p["done"], "minutes": p["minutes"], "topType": top, "lastDate": p["lastDate"]})
+    if user["role"] != "team":
+        for p in by_person.values():
+            top = max(p["types"].items(), key=lambda kv: kv[1])[0] if p["types"] else ""
+            bp.append({"open_id": p["open_id"], "name": p["name"], "orders": p["orders"],
+                       "completed": p["completed"], "minutes": p["minutes"], "topType": top,
+                       "lastDate": p["lastDate"]})
+    else:
+        summary["people"] = 0
     bp.sort(key=lambda x: x["orders"], reverse=True)
     bt = []
     for t in by_type.values():
@@ -1572,7 +1912,7 @@ SAVE_WHITELIST = {
     "teams": {"name", "room", "rehearsal", "onair"},
     "sla": {"task_type", "minutes", "buffer", "note", "grp"},
     "shifts": {"name", "start", "end", "sort"},
-    "users": {"role", "grp", "lead", "shift", "status", "work_hours", "intern", "leave_until", "alias", "approved"},
+    "users": {"role", "grp", "lead", "shift", "status", "work_hours", "intern", "leave_until", "alias", "approved", "team_id"},
     "groups": {"name", "color", "sort", "auto"},
 }
 LEAD_USER_FIELDS = {"shift", "status", "intern", "leave_until"}  # 组长只能改本组成员这几项
@@ -1625,6 +1965,12 @@ def do_save(user, body):
             fields["alias"] = str(fields["alias"] or "").strip()[:20]  # 显示名,空=用飞书名
         if "approved" in fields:
             fields["approved"] = 1 if str(fields["approved"]) in ("1", "true", "on", "yes") else 0
+        if "team_id" in fields:
+            team_id = record_id(fields["team_id"])
+            if team_id and not conn.execute("SELECT 1 FROM teams WHERE id=?", (team_id,)).fetchone():
+                conn.close()
+                return 400, "绑定团队不存在"
+            fields["team_id"] = team_id
         if "leave_until" in fields:
             lv = str(fields["leave_until"] or "").strip()
             if lv and not valid_future_date(lv) and lv != today():
@@ -1643,11 +1989,34 @@ def do_save(user, body):
             conn.close()
             return 400, "非法状态"
         active = conn.execute(
-            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status='working'", (oid,)
+            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status='in_progress'", (oid,)
+        ).fetchone()["c"]
+        assigned_or_active = conn.execute(
+            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress')", (oid,)
         ).fetchone()["c"]
         if active and fields.get("status") in ("free", "rest", "off"):
             conn.close()
             return 409, "该人员还有进行中工单,完成工单后才能切换到此状态"
+        invalidates_assignment = (
+            fields.get("role") == "team"
+            or ("grp" in fields and fields["grp"] != (target_user["grp"] or ""))
+            or ("shift" in fields and fields["shift"] != (target_user["shift"] or ""))
+            or fields.get("intern") == 1
+            or fields.get("approved") == 0
+        )
+        if assigned_or_active and invalidates_assignment:
+            conn.close()
+            return 409, f"该人员还有 {assigned_or_active} 张待执行或进行中工单，请先改派或完成"
+        leave_until = fields.get("leave_until")
+        if leave_until:
+            leave_conflicts = conn.execute(
+                """SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress')
+                   AND date>=? AND date<=?""",
+                (oid, today(), leave_until),
+            ).fetchone()["c"]
+            if leave_conflicts:
+                conn.close()
+                return 409, f"请假区间内还有 {leave_conflicts} 张工单，请先改派"
         # 防呆:唯一管理员不能把自己降级
         if fields.get("role") and fields["role"] != "admin" and oid == user["open_id"]:
             n_admin = conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'").fetchone()["c"]
@@ -1662,12 +2031,18 @@ def do_save(user, body):
             fields["task"] = ""
             fields["grp"] = ""
             fields["lead"] = 0
+        elif fields.get("role") in ("staff", "admin"):
+            fields["team_id"] = None
         sets = ",".join(f"{k}=?" for k in fields)
         conn.execute(f"UPDATE users SET {sets} WHERE open_id=?", (*fields.values(), oid))
+        if fields.get("role") == "team" or ("grp" in fields and fields["grp"] != (target_user["grp"] or "")):
+            conn.execute("DELETE FROM worker_skills WHERE open_id=?", (oid,))
         target_desc = target_user["name"]
     else:
         rid = record_id(rec.get("id"))
         grp_old_name = None
+        sla_old = None
+        shift_old_name = None
         if entity == "teams":
             if "name" in fields:
                 fields["name"] = str(fields["name"] or "").strip()
@@ -1698,6 +2073,7 @@ def do_save(user, body):
                 conn.close()
                 return 400, "工时和缓冲必须是整数"
             current = conn.execute("SELECT * FROM sla WHERE id=?", (rid,)).fetchone() if rid else None
+            sla_old = current
             minutes = fields.get("minutes", current["minutes"] if current else None)
             buffer = fields.get("buffer", current["buffer"] if current else None)
             if minutes is None or minutes <= 0:
@@ -1707,6 +2083,8 @@ def do_save(user, body):
                 conn.close()
                 return 400, "缓冲不能小于 0"
         if entity == "shifts":
+            current = conn.execute("SELECT * FROM shifts WHERE id=?", (rid,)).fetchone() if rid else None
+            shift_old_name = current["name"] if current else None
             if "name" in fields:
                 fields["name"] = str(fields["name"] or "").strip()
                 if not fields["name"]:
@@ -1771,6 +2149,19 @@ def do_save(user, body):
             conn.execute("UPDATE users SET grp=? WHERE grp=?", (newn, grp_old_name))
             conn.execute("UPDATE orders SET grp=? WHERE grp=?", (newn, grp_old_name))
             conn.execute("UPDATE sla SET grp=? WHERE grp=?", (newn, grp_old_name))
+            conn.execute("UPDATE worker_skills SET grp=? WHERE grp=?", (newn, grp_old_name))
+        if entity == "sla" and sla_old:
+            conn.execute(
+                "UPDATE worker_skills SET grp=?,task_type=? WHERE grp=? AND task_type=?",
+                (
+                    fields.get("grp", sla_old["grp"]),
+                    fields.get("task_type", sla_old["task_type"]),
+                    sla_old["grp"],
+                    sla_old["task_type"],
+                ),
+            )
+        if entity == "shifts" and shift_old_name and fields.get("name") and fields["name"] != shift_old_name:
+            conn.execute("UPDATE users SET shift=? WHERE shift=?", (fields["name"], shift_old_name))
     conn.commit()
     conn.close()
     audit_log(user, f"编辑{entity}", f"{target_desc} {json.dumps(fields, ensure_ascii=False)[:200]}")
@@ -1790,24 +2181,51 @@ def do_remove(user, body):
     task_guid = ""
     if entity == "orders":
         order = conn.execute("SELECT status,feishu_task_guid FROM orders WHERE id=?", (rid,)).fetchone()
-        if order and order["status"] == "working":
-            conn.close()
-            return 409, "进行中工单不能删除,请先完成"
         if order:
-            task_guid = order["feishu_task_guid"]
+            conn.close()
+            return 409, "业务工单不可物理删除，请使用取消或异常终止"
     if entity == "groups":
         grow = conn.execute("SELECT name FROM groups WHERE id=?", (rid,)).fetchone()
         if grow:
             gname = grow["name"]
             n_u = conn.execute("SELECT COUNT(*) c FROM users WHERE grp=?", (gname,)).fetchone()["c"]
-            n_o = conn.execute("SELECT COUNT(*) c FROM orders WHERE grp=? AND status!='done'",
+            n_o = conn.execute("SELECT COUNT(*) c FROM orders WHERE grp=? AND status IN ('pending','assigned','in_progress')",
                                (gname,)).fetchone()["c"]
-            if n_u or n_o:
+            n_s = conn.execute("SELECT COUNT(*) c FROM sla WHERE grp=?", (gname,)).fetchone()["c"]
+            if n_u or n_o or n_s:
                 conn.close()
-                return 409, f"该组还有 {n_u} 名成员 / {n_o} 张未完成工单,请先转移再删"
+                return 409, f"该组还有 {n_u} 名成员 / {n_o} 张未完成工单 / {n_s} 条任务规则，请先转移再删"
             if conn.execute("SELECT COUNT(*) c FROM groups").fetchone()["c"] <= 1:
                 conn.close()
                 return 400, "至少保留一个组"
+    if entity == "shifts":
+        shift = conn.execute("SELECT name FROM shifts WHERE id=?", (rid,)).fetchone()
+        if shift:
+            count = conn.execute("SELECT COUNT(*) count FROM users WHERE shift=?", (shift["name"],)).fetchone()["count"]
+            if count:
+                conn.close()
+                return 409, f"该班次仍被 {count} 名人员使用，请先调整人员班次"
+    if entity == "teams":
+        bound = conn.execute("SELECT COUNT(*) count FROM users WHERE team_id=?", (rid,)).fetchone()["count"]
+        active = conn.execute(
+            "SELECT COUNT(*) count FROM orders WHERE team_id=? AND status IN ('pending','assigned','in_progress')",
+            (rid,),
+        ).fetchone()["count"]
+        if bound or active:
+            conn.close()
+            return 409, f"该团队仍绑定 {bound} 个账号 / {active} 张未结束订单，不能删除"
+    if entity == "sla":
+        rule = conn.execute("SELECT grp,task_type FROM sla WHERE id=?", (rid,)).fetchone()
+        if rule:
+            active = conn.execute(
+                """SELECT COUNT(*) count FROM orders WHERE grp=? AND task_type=?
+                   AND status IN ('pending','assigned','in_progress')""",
+                (rule["grp"], rule["task_type"]),
+            ).fetchone()["count"]
+            if active:
+                conn.close()
+                return 409, f"该任务类型仍有 {active} 张未结束订单，不能删除"
+            conn.execute("DELETE FROM worker_skills WHERE grp=? AND task_type=?", (rule["grp"], rule["task_type"]))
     if conn.execute(f"DELETE FROM {entity} WHERE id=?", (rid,)).rowcount != 1:
         conn.close()
         return 400, "记录不存在"
@@ -1819,9 +2237,44 @@ def do_remove(user, body):
     return 200, None
 
 
+def do_skills(user, body):
+    target_id = (body.get("user_id") or "").strip()
+    task_types = body.get("task_types") or []
+    if not target_id or not isinstance(task_types, list):
+        return 400, "人员或能力列表无效"
+    task_types = list(dict.fromkeys(str(item or "").strip() for item in task_types if str(item or "").strip()))
+    conn = db()
+    conn.execute("BEGIN IMMEDIATE")
+    target = conn.execute("SELECT * FROM users WHERE open_id=?", (target_id,)).fetchone()
+    if not target or target["role"] == "team" or not target["grp"]:
+        conn.close()
+        return 404, "工作人员不存在"
+    if not business.is_manager(user, target["grp"]):
+        conn.close()
+        return 403, "只有管理员或本组组长可以配置能力"
+    valid = {row["task_type"] for row in conn.execute("SELECT task_type FROM sla WHERE grp=?", (target["grp"],))}
+    invalid = [item for item in task_types if item not in valid]
+    if invalid:
+        conn.close()
+        return 400, f"能力不属于该组：{invalid[0]}"
+    conn.execute("DELETE FROM worker_skills WHERE open_id=? AND grp=?", (target_id, target["grp"]))
+    conn.executemany(
+        "INSERT INTO worker_skills(open_id,grp,task_type,created_at) VALUES(?,?,?,?)",
+        [(target_id, target["grp"], item, now_iso()) for item in task_types],
+    )
+    conn.execute(
+        "INSERT INTO audit(ts,open_id,name,action,detail) VALUES(?,?,?,?,?)",
+        (now_iso(), user["open_id"], user["name"], "配置人员能力", f"{dn(target)} · {', '.join(task_types) or '无'}"),
+    )
+    conn.commit()
+    conn.close()
+    return 200, None
+
+
 SETTING_WHITELIST = {"reminder_on", "reminder_minutes", "urgent_on",
                      "rule_book_lock_sla", "book_team_cap", "book_grace_min", "book_max_min",
                      "book_team_day_min", "rule_dev_note", "rule_biange_media", "rule_done_note",
+                     "book_horizon_days", "start_early_min",
                      "nav_team", "nav_staff", "gate_mode", "allow_dept_ids", "overrun_remind_min", "overrun_close_min"}
 
 
@@ -1845,6 +2298,16 @@ def do_set_setting(user, body):
             v = str(max(0, min(120, int(v or 15))))
         except ValueError:
             return 400, "分钟需为数字"
+    elif k == "book_horizon_days":
+        try:
+            v = str(max(1, min(31, int(v or 7))))
+        except ValueError:
+            return 400, "预约天数需为数字"
+    elif k == "start_early_min":
+        try:
+            v = str(max(0, min(120, int(v or 30))))
+        except ValueError:
+            return 400, "提前开始分钟需为数字"
     elif k == "book_max_min":
         try:
             v = str(max(60, min(1440, int(v or 720))))
@@ -1889,6 +2352,8 @@ def do_purge(user, body):
     """数据维护(仅管理员):清空工单或审计,用于清掉测试期间留下的数据。人员/团队/班次/规则全部保留。"""
     if user["role"] != "admin":
         return 403, "仅管理员可清理数据"
+    if not TEST_MODE:
+        return 403, "正式环境禁止清空业务数据"
     what = (body.get("what") or "").strip()
     if (body.get("confirm") or "") != "清空":
         return 400, "确认口令不对(需输入「清空」两个字)"
@@ -1897,6 +2362,10 @@ def do_purge(user, body):
         n = conn.execute("SELECT COUNT(*) c FROM orders").fetchone()["c"]
         guids = [r["feishu_task_guid"] for r in conn.execute(
             "SELECT feishu_task_guid FROM orders WHERE COALESCE(feishu_task_guid,'')!=''")]
+        conn.execute("DELETE FROM work_sessions")
+        conn.execute("DELETE FROM transfers")
+        conn.execute("DELETE FROM order_events")
+        conn.execute("DELETE FROM uploads WHERE order_id IS NOT NULL")
         conn.execute("DELETE FROM orders")
         conn.execute("UPDATE users SET status=CASE WHEN status IN('busy','check') THEN 'free' ELSE status END, task='' WHERE role!='team'")
         conn.commit()
@@ -1906,12 +2375,8 @@ def do_purge(user, body):
         audit_log(user, "清空工单数据", f"删除 {n} 张工单(人员/团队/配置保留)")
         return 200, None
     if what == "audit":
-        n = conn.execute("SELECT COUNT(*) c FROM audit").fetchone()["c"]
-        conn.execute("DELETE FROM audit")
-        conn.commit()
         conn.close()
-        audit_log(user, "清空审计日志", f"删除 {n} 条历史记录")
-        return 200, None
+        return 403, "审计记录不可清空"
     conn.close()
     return 400, "不支持的清理对象"
 
@@ -1973,6 +2438,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if COOKIE_SECURE:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'",
+        )
         for k, v in (extra_headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -1981,6 +2454,8 @@ class Handler(BaseHTTPRequestHandler):
     def _redirect(self, url, cookies=None):
         self.send_response(302)
         self.send_header("Location", url)
+        if COOKIE_SECURE:
+            self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         for c in (cookies or []):
             self.send_header("Set-Cookie", c)
         self.send_header("Content-Length", "0")
@@ -1998,6 +2473,17 @@ class Handler(BaseHTTPRequestHandler):
     def _user(self):
         return session_user(self._cookie("sid"))
 
+    @staticmethod
+    def _approved(user):
+        return bool(
+            user
+            and (
+                user.get("role") == "admin"
+                or user.get("approved", 0)
+                or setting("gate_mode", "open") == "open"
+            )
+        )
+
     def _body(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
         if n <= 0:
@@ -2013,6 +2499,8 @@ class Handler(BaseHTTPRequestHandler):
         u = self._user()
         if not u:
             return self._send(401, {"ok": False, "msg": "未登录"})
+        if not self._approved(u):
+            return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if not (ctype.startswith("audio/") or ctype.startswith("video/")):
             return self._send(400, {"ok": False, "msg": "只支持音频或视频文件"})
@@ -2022,6 +2510,7 @@ class Handler(BaseHTTPRequestHandler):
         if n > MEDIA_MAX_BYTES:
             return self._send(413, {"ok": False, "msg": f"文件过大(上限 {MEDIA_MAX_BYTES//1024//1024}MB)"})
         ext = MEDIA_EXT.get(ctype) or ("mp4" if ctype.startswith("video/") else "m4a")
+        token = secrets.token_urlsafe(24)
         fname = f"{secrets.token_urlsafe(16)}.{ext}"
         dest = MEDIA_DIR / fname
         remaining = n
@@ -2040,16 +2529,41 @@ class Handler(BaseHTTPRequestHandler):
             dest.unlink(missing_ok=True)
             return self._send(400, {"ok": False, "msg": "上传中断,请重试"})
         kind = "video" if ctype.startswith("video/") else "audio"
+        conn = db()
+        conn.execute(
+            """INSERT INTO uploads(token,path,kind,owner_id,status,size,created_at)
+               VALUES(?,?,?,?,'pending',?,?)""",
+            (token, f"/media/{fname}", kind, u["open_id"], n, now_iso()),
+        )
+        conn.commit()
+        conn.close()
         audit_log(u, "上传附件", f"{kind} {fname}")
-        return self._send(200, {"ok": True, "url": f"/media/{fname}", "kind": kind})
+        return self._send(200, {"ok": True, "token": token, "kind": kind})
 
     def _serve_media(self, path):
-        if not self._user():
+        user = self._user()
+        if not user:
             return self._send(403, {"ok": False, "msg": "未登录"})
+        if not self._approved(user):
+            return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
         fname = os.path.basename(urllib.parse.unquote(path))
         dest = MEDIA_DIR / fname
         if not fname or not dest.is_file():
             return self._send(404, b"not found", "text/plain")
+        conn = db()
+        upload = conn.execute("SELECT * FROM uploads WHERE path=?", (f"/media/{fname}",)).fetchone()
+        allowed = False
+        if upload:
+            if upload["status"] == "pending":
+                allowed = upload["owner_id"] == user["open_id"] or user["role"] == "admin"
+            elif upload["order_id"]:
+                order = conn.execute("SELECT * FROM orders WHERE id=?", (upload["order_id"],)).fetchone()
+                allowed = bool(order and business.can_view_order(user, order))
+        else:
+            allowed = user["role"] == "admin"
+        conn.close()
+        if not allowed:
+            return self._send(403, {"ok": False, "msg": "无权查看该附件"})
         ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
         ctype = EXT_CONTENT_TYPE.get(ext, "application/octet-stream")
         size = dest.stat().st_size
@@ -2095,12 +2609,47 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            if rate_limited(self.client_address[0], path):
+            limit_key = self._cookie("sid") or self.client_address[0]
+            if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path in ("/", "/index.html"):
                 return self._send(200, (ROOT / "index.html").read_bytes(), "text/html")
+            if path == "/vendor/lucide.min.js":
+                return self._send(200, (ROOT / "vendor" / "lucide.min.js").read_bytes(), "text/javascript")
             if path == "/favicon.ico":
                 return self._send(204, b"", "image/x-icon")
+            if path == "/api/health":
+                try:
+                    conn = db()
+                    conn.execute("SELECT 1").fetchone()
+                    pending = conn.execute(
+                        "SELECT COUNT(*) count FROM notification_outbox WHERE status IN ('pending','retry')"
+                    ).fetchone()["count"]
+                    failed = conn.execute(
+                        "SELECT COUNT(*) count FROM notification_outbox WHERE status='failed'"
+                    ).fetchone()["count"]
+                    scheduler = conn.execute(
+                        "SELECT updated_at FROM system_health WHERE key='scheduler'"
+                    ).fetchone()
+                    conn.close()
+                    scheduler_time = business.parse_dt(scheduler["updated_at"]) if scheduler else None
+                    scheduler_ok = bool(
+                        scheduler_time and datetime.now() - scheduler_time <= timedelta(seconds=120)
+                    )
+                    scheduler_starting = not scheduler_time and time.time() - PROCESS_STARTED <= 120
+                    free_mb = shutil.disk_usage(ROOT).free // 1024 // 1024
+                    healthy = (scheduler_ok or scheduler_starting) and failed == 0 and free_mb >= 250
+                    return self._send(200 if healthy else 503, {
+                        "ok": healthy,
+                        "version": SERVER_VERSION,
+                        "db": "ok",
+                        "scheduler": "ok" if scheduler_ok else ("starting" if scheduler_starting else "stale"),
+                        "pending": pending,
+                        "failed": failed,
+                        "free_mb": free_mb,
+                    })
+                except Exception:
+                    return self._send(503, {"ok": False, "version": SERVER_VERSION, "db": "error"})
             if path.startswith("/media/"):
                 return self._serve_media(path)
             if path == "/api/me":
@@ -2132,11 +2681,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(401, {"ok": False, "configured": FEISHU_CONFIGURED,
                                             "test_mode": TEST_MODE,
                                             "msg": "未登录"})
+                if not self._approved(u):
+                    return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
                 return self._send(200, {"ok": True, "data": api_state(u)})
             if path == "/api/users":
                 u = self._user()
                 if not u:
                     return self._send(401, {"ok": False, "msg": "未登录"})
+                if not self._approved(u):
+                    return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
                 code, result = api_users(u)
                 if code != 200:
                     return self._send(code, {"ok": False, "msg": result})
@@ -2145,6 +2698,8 @@ class Handler(BaseHTTPRequestHandler):
                 u = self._user()
                 if not u:
                     return self._send(401, {"ok": False, "msg": "未登录"})
+                if not self._approved(u):
+                    return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
                 qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 code, result = api_stats(u, {k: v[0] for k, v in qs.items()})
                 if code != 200:
@@ -2154,6 +2709,8 @@ class Handler(BaseHTTPRequestHandler):
                 u = self._user()
                 if not u:
                     return self._send(401, {"ok": False, "msg": "未登录"})
+                if not self._approved(u):
+                    return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
                 qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 code, result = api_schedule(u, {k: v[0] for k, v in qs.items()})
                 if code != 200:
@@ -2163,7 +2720,8 @@ class Handler(BaseHTTPRequestHandler):
                 u = self._user()
                 if not u:
                     return self._send(401, {"ok": False, "msg": "未登录"})
-                # 审计全员可见:谁下的单/谁派的/谁改的规则,全程留痕
+                if u["role"] != "admin":
+                    return self._send(403, {"ok": False, "msg": "仅管理员可查看审计记录"})
                 conn = db()
                 amap = alias_map(conn)
                 rows = [dict(r) for r in conn.execute(
@@ -2185,7 +2743,7 @@ class Handler(BaseHTTPRequestHandler):
                     "redirect_uri": BASE_URL + "/auth/callback",
                     "response_type": "code", "state": state})
                 return self._redirect(AUTHORIZE_URL + "?" + q,
-                                      cookies=[f"oastate={state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600"])
+                                      cookies=[f"oastate={state}; Path=/; HttpOnly; SameSite=Lax{COOKIE_SECURE}; Max-Age=600"])
             if path == "/auth/callback":
                 if not FEISHU_CONFIGURED:
                     return self._send(503, "飞书应用尚未配置".encode(), "text/plain")
@@ -2206,7 +2764,7 @@ class Handler(BaseHTTPRequestHandler):
                 sid = new_session(info["open_id"])
                 audit_log({"open_id": info["open_id"], "name": info["name"]}, "登录", "飞书 OAuth")
                 return self._redirect("/", cookies=[
-                    f"sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_DAYS*86400}",
+                    f"sid={sid}; Path=/; HttpOnly; SameSite=Lax{COOKIE_SECURE}; Max-Age={SESSION_DAYS*86400}",
                     "oastate=; Path=/; Max-Age=0"])
             if path == "/logout":
                 drop_session(self._cookie("sid"))
@@ -2222,7 +2780,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            if rate_limited(self.client_address[0], path):
+            limit_key = self._cookie("sid") or self.client_address[0]
+            if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path == "/api/upload":
                 return self._handle_upload()
@@ -2248,7 +2807,7 @@ class Handler(BaseHTTPRequestHandler):
                     {"ok": True},
                     extra_headers={
                         "Set-Cookie": (
-                            f"sid={sid}; Path=/; HttpOnly; SameSite=Lax; "
+                            f"sid={sid}; Path=/; HttpOnly; SameSite=Lax{COOKIE_SECURE}; "
                             f"Max-Age={SESSION_DAYS*86400}"
                         )
                     },
@@ -2263,17 +2822,22 @@ class Handler(BaseHTTPRequestHandler):
 
             routes = {
                 "/api/claim-admin": do_claim_admin,
-                "/api/tech-status": do_tech_status,
-                "/api/order": do_order,
-                "/api/assign": do_assign,
-                "/api/start": do_start,
-                "/api/complete": do_complete,
+                "/api/tech-status": SERVICE.tech_status,
+                "/api/order": SERVICE.order,
+                "/api/assign": SERVICE.assign,
+                "/api/start": SERVICE.start,
+                "/api/complete": SERVICE.complete,
                 "/api/save": do_save,
                 "/api/remove": do_remove,
+                "/api/skills": do_skills,
                 "/api/setting": do_set_setting,
-                "/api/reassign": do_reassign,
-                "/api/cancel-order": do_order_cancel,
-                "/api/edit-order": do_order_edit,
+                "/api/reassign": SERVICE.reassign,
+                "/api/cancel-order": SERVICE.cancel,
+                "/api/edit-order": SERVICE.edit,
+                "/api/transfer": SERVICE.request_transfer,
+                "/api/transfer-approve": SERVICE.approve_transfer,
+                "/api/transfer-accept": SERVICE.accept_transfer,
+                "/api/transfer-withdraw": SERVICE.withdraw_transfer,
                 "/api/purge": do_purge,
             }
             fn = routes.get(path)
@@ -2292,8 +2856,53 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"ok": False, "msg": "服务器处理失败"})
 
 
+class DispatchHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, address, handler_class, max_workers=64):
+        self._worker_slots = threading.BoundedSemaphore(max_workers)
+        super().__init__(address, handler_class)
+
+    def get_request(self):
+        request, address = super().get_request()
+        request.settimeout(30)
+        return request, address
+
+    def process_request(self, request, client_address):
+        if not self._worker_slots.acquire(blocking=False):
+            request.close()
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self._worker_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._worker_slots.release()
+
+
+def configure_logging():
+    LOG_DIR.mkdir(exist_ok=True)
+    handler = RotatingFileHandler(LOG_DIR / "dispatch.log", maxBytes=5 * 1024 * 1024, backupCount=10, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.handlers.clear()
+    root.addHandler(handler)
+
+
 def main():
+    configure_logging()
+    if DB_PATH.exists() and not TEST_MODE:
+        backup_database(force=True)
     init_db()
+    stop_event = threading.Event()
+    worker = threading.Thread(target=background_loop, args=(stop_event,), daemon=True, name="dispatch-background")
+    worker.start()
     print("=" * 52)
     print("灯光派工系统 · 企业级后端")
     print("=" * 52)
@@ -2311,7 +2920,14 @@ def main():
     print(f"数据库: {DB_PATH}")
     print(f"监听:  http://{HOST}:{PORT}   (Ctrl+C 停止)")
     print("=" * 52)
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    server = DispatchHTTPServer((HOST, PORT), Handler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        stop_event.set()
+        server.server_close()
 
 
 if __name__ == "__main__":

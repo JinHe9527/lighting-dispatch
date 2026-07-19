@@ -1,99 +1,61 @@
-# 灯光派工系统 · 运维手册
+# 团播派工系统
 
-三端一体的灯光排班派工软件:团队下单 / 师傅接单报状态 / 管理端调度。
-飞书登录 + 服务器端 RBAC 权限 + SQLite + 审计日志 + 飞书私信通知。零 pip 依赖。
+面向团队下单人、工作人员、组长和管理员的内部派工系统。后端仅使用 Python 标准库和 SQLite，前端为单页应用，支持飞书 OAuth、消息通知和任务提醒。
 
-## 日常
+## Windows 正式部署
 
-```bash
-# 手动启动(前台,Ctrl+C 停)
-cd "/Users/pc/github 项目/灯光排期软件" && python3 app/server.py
+正式目录：`D:\BaiduNetdiskDownload\灯光排班-Windows\dispatch`
 
-# 常驻安装(开机自启 + 崩溃自拉,推荐)
-bash scripts/deploy/install.sh
-# 卸载常驻
-bash scripts/deploy/install.sh remove
+核心文件：
 
-# 看日志
-tail -f ~/Library/Logs/dispatch.log
+| 文件 | 作用 |
+|---|---|
+| `app\server.py` | HTTP、飞书接入、后台任务与配置管理 |
+| `app\business.py` | 状态、排期、权限、能力、公平派单和数据库迁移 |
+| `app\service.py` | 工单、取消、改派和转包事务 |
+| `app\index.html` | 四类角色页面 |
+| `app\dispatch.db` | 正式数据库，部署更新不得覆盖 |
+| `.env` | 飞书密钥和公网地址，部署更新不得覆盖 |
+| `app\media` | 业务附件，部署更新不得覆盖 |
+
+更新代码后双击 `app\重启服务-windows.bat`。启动时会先在线备份正式数据库，再执行原地迁移；备份保存在 `app\backups`，最多保留最近 30 份。
+
+## 正式配置
+
+`.env` 至少包含：
+
+```text
+DISPATCH_APP_ID=飞书应用ID
+DISPATCH_APP_SECRET=飞书应用密钥
+DISPATCH_BASE_URL=https://你的公网域名
+DISPATCH_TEST_MODE=0
 ```
 
-访问:`http://<Mac内网IP>:8848`(取 IP:`ipconfig getifaddr en0`)
+正式环境必须使用 HTTPS。飞书后台的网页地址和 OAuth 回调必须与 `DISPATCH_BASE_URL` 完全一致。
 
-## 文件
-
-| 文件 | 说明 |
-|---|---|
-| `app/server.py` | 后端(Python 3.9 stdlib) |
-| `app/index.html` | 前端(单页三端) |
-| `app/dispatch.db` | 数据库主文件,在线备份请使用下方 SQLite `.backup` 命令 |
-| `app/dispatch-test.db` | 独立测试库,仅在 `DISPATCH_TEST_MODE=1` 时使用 |
-| `app/data.json` | 旧版本地库,仅作首次迁移源(teams+SLA),已不再写入 |
-| `docs/飞书后台配置指引.md` | 飞书应用创建/权限/发布 全步骤 |
-| `scripts/deploy/` | launchd 常驻脚本 |
-
-## 飞书配置
-
-- 正式模式只接受飞书 OAuth 真实身份登录。
-- `.env` 必须配置 `DISPATCH_APP_ID`、`DISPATCH_APP_SECRET` 和 `DISPATCH_BASE_URL`,具体见配置指引第 6 步。
-
-## 测试模式
-
-在申请飞书应用前,`.env` 设置:
+## 本地测试
 
 ```bash
-DISPATCH_TEST_MODE=1
+DISPATCH_TEST_MODE=1 python3 app/server.py
+python3 -m unittest discover -s tests -v
 ```
 
-重启后登录页提供团队端、师傅端、管理端三个测试身份。所有操作只写入
-`app/dispatch-test.db`,不会污染正式库,也不会发送飞书通知。
-
-飞书应用配置完成后,把 `DISPATCH_TEST_MODE` 改为 `0`,再填写三个飞书配置并重启,
-系统会直接使用正式库 `app/dispatch.db`。
-
-## 权限模型
-
-| 角色 | 能干什么 |
-|---|---|
-| team(默认) | 下单、看绿灯板和单据 |
-| staff | + 报自己的状态、抢单、完成自己的单 |
-| admin | + 派单给任何人、人员/团队/SLA 增删改、看审计日志 |
-
-- 所有权限在**服务器端强制**,改前端绕不过去;所有变更写审计日志。
-- 首个管理员:服务器启动日志里的 6 位**引导码**,登录后在页面横幅输入认领(一次有效)。
-- 之后加管理员:管理端 → 人员管理 → 把某人角色改为"管理员"。
-
-## 备份 / 恢复
+浏览器冒烟测试需要 Playwright 和本机 Chrome：
 
 ```bash
-# 在线备份(SQLite 会把 WAL 中已提交的数据一起写入备份文件)
-sqlite3 app/dispatch.db ".backup '$HOME/Desktop/dispatch-$(date +%m%d).db'"
-
-# 恢复前先停常驻服务,恢复后重新安装并启动
-bash scripts/deploy/install.sh remove
-RESTORE_TRASH="$HOME/.Trash/dispatch-before-restore-$(date +%Y%m%d%H%M%S)"
-mkdir -p "$RESTORE_TRASH"
-for file in app/dispatch.db*; do
-  [ -e "$file" ] && mv "$file" "$RESTORE_TRASH/"
-done
-cp ~/Desktop/dispatch-0711.db app/dispatch.db
-bash scripts/deploy/install.sh
+node tests/ui_smoke.cjs
 ```
 
-## 迁云(以后想全网可用时)
+测试模式使用独立数据库，不发送真实飞书消息。
 
-1. 买一台轻量云主机(腾讯/阿里,¥100-300/年,选上海/广州)
-2. 先按上方 `.backup` 命令生成最新备份,再上传 `server.py`、`index.html`、备份文件和 `.env` 三个 DISPATCH_ 值到服务器
-3. 把备份文件放为 `/opt/dispatch/dispatch.db`,运行 `python3 /opt/dispatch/server.py`,并配置 systemd 常驻
-4. `.env` 的 `DISPATCH_BASE_URL` 改成 `http://云IP:8848`;飞书后台改两处:网页应用主页 URL、安全设置回调 URL
-5. 完成 —— 代码零改动,手机 4G 也能用,消息卡片按钮等公网能力也解锁
+## 核心业务规则
 
-## 排障
+- 工单状态：待派工、已派待开始、进行中、已完成、已取消、异常。
+- 团队账号必须绑定真实团队，只能查看本团队数据，不能指定工作人员。
+- 指派必须通过完整班次、请假、能力、账号资格和时间冲突检查。
+- 预约默认限未来 7 天、2 个未开始预约、每天 240 分钟。
+- 转包接受前原负责人继续负责；紧急、重复或进行中交接需组长审批。
+- 取消、异常和转包全部留存订单事件及审计，不物理删除业务历史。
+- 正式环境禁止清空工单或审计日志。
 
-| 现象 | 处理 |
-|---|---|
-| 手机打不开 | 手机和 Mac 要同一 Wi-Fi;IT 是否开了 AP 隔离;Mac 防火墙放行 python3 |
-| 登录 redirect_uri 不匹配 | 飞书后台回调 URL 与 `.env` 的 `DISPATCH_BASE_URL` 必须完全一致 |
-| 收不到私信 | 飞书后台 im 权限已开?版本已发布?可用范围含该员工? |
-| 端口被占 | `lsof -ti:8848 \| xargs kill` |
-| 想重置全部数据 | 先停服,再把 `app/dispatch.db*` 移入废纸篓后启动;团队/SLA 会从 data.json 重新迁入 |
+详细规则见 `docs/派工业务规则基线.md`，上线验证见 `docs/上线前全链路审计报告.md`。

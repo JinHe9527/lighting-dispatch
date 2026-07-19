@@ -7,3 +7,4 @@ __pycache__/
 *.log
 app/data.json
 app/media/
+app/backups/
