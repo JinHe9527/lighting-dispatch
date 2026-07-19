@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f7">
+<title>团播派工</title>
+<script>(function(){var p=localStorage.getItem("dispatch_theme")||"auto";var d=p==="auto"?matchMedia("(prefers-color-scheme: dark)").matches:p==="dark";document.documentElement.dataset.theme=d?"dark":"light";})()</script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer onload="lucide.createIcons()"></script>
+<style>
+:root{
+  --bg:#f5f5f7;--surface:#ffffff;--side:#ececee;
+  --fill:rgba(120,120,128,.10);--fill-2:rgba(120,120,128,.16);
+  --line:rgba(0,0,0,.12);--line-soft:rgba(0,0,0,.07);
+  --text:#1d1d1f;--muted:rgba(60,60,67,.62);--dim:rgba(60,60,67,.38);
+  --accent:#007aff;--green:#34c759;--orange:#ff9500;--red:#ff3b30;
+  --teal:#32ade6;--yellow:#d9a400;--gray:#8e8e93;
+  --seg:#ffffff;--chrome:rgba(245,245,247,.82);
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 6px 22px rgba(0,0,0,.06);
+  --shadow-sm:0 .5px 1.5px rgba(0,0,0,.10);
+  --radius:10px;--nav:212px;--rail:292px;--tlname:104px;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro SC","PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#1c1c1e;--surface:#2c2c2e;--side:#232325;
+  --fill:rgba(120,120,128,.22);--fill-2:rgba(120,120,128,.32);
+  --line:rgba(255,255,255,.14);--line-soft:rgba(255,255,255,.08);
+  --text:#f5f5f7;--muted:rgba(235,235,245,.62);--dim:rgba(235,235,245,.34);
+  --accent:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;
+  --teal:#64d2ff;--yellow:#ffd60a;--gray:#98989d;
+  --seg:#636366;--chrome:rgba(28,28,30,.78);
+  --shadow:0 1px 2px rgba(0,0,0,.28),0 8px 26px rgba(0,0,0,.30);
+  --shadow-sm:0 .5px 1.5px rgba(0,0,0,.35);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;-webkit-font-smoothing:antialiased}
+body{min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.4}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:none;box-shadow:0 0 0 3.5px color-mix(in srgb,var(--accent) 30%,transparent)}
+svg{display:block}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.icon{width:16px;height:16px;stroke-width:1.8}
+.icon-sm{width:13px;height:13px}
+.hidden{display:none!important}
+
+/* Login */
+.login{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--surface) 55%,var(--bg)) 0%,var(--bg) 62%)}
+.login-panel{width:min(400px,100%);padding:44px 36px 30px;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:var(--shadow);text-align:center}
+.app-icon{width:64px;height:64px;margin:0 auto 18px;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(180deg,#ffb648 0%,#f07d12 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 16px rgba(240,125,18,.32)}
+.app-icon .icon{width:30px;height:30px;stroke-width:1.6}
+.login h1{margin:0 0 6px;font-size:21px;font-weight:700;letter-spacing:.2px}
+.login-copy{margin:0 0 26px;color:var(--muted);font-size:13px}
+.primary{height:40px;border:0;background:var(--accent);color:#fff;border-radius:8px;padding:0 16px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;justify-content:center;gap:7px;box-shadow:var(--shadow-sm)}
+.primary,.text-btn,.icon-btn,.nav-btn,.filter,.seg-btn,.order-extra,.crew-row,.order-row,.metric,.switch i,.media-btn{transition:background-color .16s ease,border-color .16s ease,color .16s ease,box-shadow .16s ease,transform .1s ease}
+.primary:hover{background:color-mix(in srgb,var(--accent) 90%,#000)}
+.primary:active,.text-btn:active,.filter:active,.seg-btn:active{transform:translateY(.5px)}
+.icon-btn:hover{background:var(--fill);color:var(--text)}
+.primary:hover{background:color-mix(in srgb,var(--accent) 88%,#fff)}
+.primary:active{background:color-mix(in srgb,var(--accent) 86%,#000)}
+.primary.full{width:100%}
+.test-roles{display:grid;gap:8px}
+.test-role{height:38px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;font-weight:500;box-shadow:var(--shadow-sm)}
+.test-role:hover{background:var(--fill)}
+.login-foot{margin-top:24px;color:var(--dim);font-size:11px}
+
+/* App shell */
+.app-shell{min-height:100vh;display:grid;grid-template-columns:var(--nav) minmax(0,1fr)}
+.side{position:fixed;inset:0 auto 0 0;width:var(--nav);border-right:1px solid var(--line-soft);background:var(--side);padding:18px 12px 14px;display:flex;flex-direction:column;z-index:30}
+.side-brand{display:flex;gap:10px;align-items:center;padding:2px 6px 18px}
+.side-brand strong{font-size:14px;font-weight:600}
+.side .app-icon{width:30px;height:30px;margin:0;border-radius:8px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.35),0 1px 3px rgba(240,125,18,.35)}
+.side .app-icon .icon{width:16px;height:16px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav-btn{height:34px;border:0;background:transparent;color:var(--text);border-radius:8px;padding:0 9px;display:flex;align-items:center;gap:9px;text-align:left;font-weight:500;font-size:13px}
+.nav-btn .icon{color:var(--accent);stroke-width:1.7}
+.nav-btn:hover{background:var(--fill)}
+.nav-btn.active{background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text)}
+.side-bottom{margin-top:auto;border-top:1px solid var(--line-soft);padding-top:10px}
+.connection{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;padding:6px 8px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.user-row{display:flex;align-items:center;gap:9px;padding:8px;border-radius:8px;cursor:pointer;color:var(--muted)}
+.user-row:hover{background:var(--fill)}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--fill-2);color:var(--muted);display:grid;place-items:center;font-size:12px;font-weight:600;overflow:hidden;flex:0 0 auto}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.user-meta{min-width:0;flex:1}
+.user-meta strong{display:block;font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-meta span{color:var(--dim);font-size:10px}
+.main{grid-column:2;min-width:0}
+.topbar{height:52px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;background:var(--chrome);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);z-index:20}
+.page-title h1{margin:0;font-size:15px;font-weight:600}
+.top-actions{display:flex;align-items:center;gap:8px}
+.clock{font:11px var(--mono);color:var(--muted)}
+.icon-btn{width:30px;height:30px;border:0;background:transparent;color:var(--muted);border-radius:8px;display:grid;place-items:center}
+.icon-btn:hover{background:var(--fill);color:var(--text)}
+.workspace{padding:20px 24px 44px;max-width:1160px;margin:0 auto}
+.workspace.ws-wide{max-width:1460px}
+.banner{min-height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:12px;margin-bottom:14px;padding:7px 12px}
+.banner.info{background:color-mix(in srgb,var(--accent) 9%,transparent);color:color-mix(in srgb,var(--accent) 78%,var(--text))}
+.banner.warn{background:color-mix(in srgb,#ff9f0a 14%,transparent);color:color-mix(in srgb,#ff9f0a 82%,var(--text));font-weight:600}
+.bootstrap{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:14px;background:color-mix(in srgb,var(--yellow) 13%,transparent);border:1px solid color-mix(in srgb,var(--yellow) 32%,transparent);border-radius:8px;font-size:12px}
+.bootstrap strong{font-weight:600}
+.bootstrap input{width:110px}
+
+/* Shared UI */
+.grid{display:grid;gap:14px}.grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.overview-grid{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);gap:10px;align-items:start}
+.overview-grid>*{min-width:0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.panel{border:1px solid var(--line-soft);background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.panel-head{min-height:40px;padding:0 14px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.panel-head h2{margin:0;font-size:13px;font-weight:600}
+.panel-head p{margin:2px 0 0;color:var(--dim);font-size:11px;font-weight:400}
+.panel-body{padding:12px 14px}
+.section-label{color:var(--muted);font-size:11px;font-weight:600;margin:0 0 7px}
+.metric-row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin-bottom:12px}
+.metric-row::-webkit-scrollbar{display:none}
+.metric{flex:1 0 auto;min-width:92px;min-height:52px;padding:8px 13px;border:1px solid var(--line-soft);background:var(--surface);border-radius:12px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;justify-content:center;gap:2px}
+.metric span{color:var(--muted);font-size:11px;font-weight:500}
+.metric strong{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.metric em{font-style:normal;font-size:10px;color:var(--orange,#ff9f0a)}
+.metric em{font-style:normal;font-size:11px;color:var(--red);font-weight:500}
+.metric.green strong{color:var(--green)}.metric.amber strong{color:var(--orange)}.metric.cyan strong{color:var(--teal)}.metric.red strong{color:var(--red)}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--status,var(--gray));flex:0 0 auto}
+.s-free{--status:var(--green)}.s-busy{--status:var(--orange)}.s-check{--status:var(--teal)}.s-rest{--status:var(--yellow)}.s-off{--status:var(--gray)}.s-wait{--status:var(--gray)}.s-done{--status:var(--green)}.s-working{--status:var(--orange)}.s-idle{--status:var(--yellow)}
+.tag{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;color:color-mix(in srgb,var(--status,var(--muted)) 82%,var(--text));background:color-mix(in srgb,var(--status,var(--gray)) 13%,transparent);border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.muted{color:var(--muted)}.dim{color:var(--dim)}
+.empty{padding:32px 16px;text-align:center;color:var(--dim);font-size:12px}
+.order-empty{display:flex;align-items:center;justify-content:center;gap:6px;padding:14px;color:var(--muted);font-size:12px}
+.empty .icon{width:22px;height:22px;margin:0 auto 8px}
+.text-btn{height:30px;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:0 11px;border-radius:8px;font-weight:500;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;box-shadow:var(--shadow-sm);white-space:nowrap;flex:0 0 auto}
+.text-btn:hover{background:var(--fill)}
+.text-btn.amber{border-color:color-mix(in srgb,var(--accent) 38%,transparent);color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
+.text-btn.amber:hover{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.text-btn.danger{border-color:color-mix(in srgb,var(--red) 38%,transparent);color:var(--red);background:color-mix(in srgb,var(--red) 7%,transparent)}
+input,select{height:32px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:0 9px;min-width:0}
+input:focus-visible,select:focus-visible{border-color:var(--accent)}
+input::placeholder{color:var(--dim)}
+select{appearance:none;-webkit-appearance:none;padding-right:26px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e6e73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center}
+:root[data-theme="dark"] select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23aeaeb2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:11px;color:var(--muted);font-weight:600}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.filters{display:inline-flex;gap:0;background:var(--fill);border-radius:8px;padding:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.filter{height:26px;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:0;background:transparent;color:var(--muted);border-radius:6px;padding:0 12px;font-size:12px;font-weight:500;white-space:nowrap;flex:0 0 auto}
+.gtabs .gdot{width:8px;height:8px;border-radius:50%;flex:none}
+.filter .gdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--gc,var(--muted));display:inline-block}
+/* 预约规则清单(团队端) */
+.rulebox{margin-top:10px;padding:9px 11px;border-radius:9px;background:color-mix(in srgb,var(--accent) 6%,transparent);border:1px solid color-mix(in srgb,var(--accent) 18%,transparent)}
+.rulebox-t{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:color-mix(in srgb,var(--accent) 80%,var(--text));margin-bottom:5px}
+.rulebox-l{font-size:11.5px;line-height:1.8;color:var(--muted)}
+.rulebox-l b{color:var(--text)}
+.navvis{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px}
+.nv{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text);cursor:pointer}
+.nv input{width:16px;height:16px;accent-color:var(--accent)}
+/* 人员显示名编辑(仅管理员) */
+.alias-in{height:30px;background:var(--fill);border:0;border-radius:7px;padding:0 8px;font-size:13px;font-weight:600;width:130px;max-width:100%;min-width:0}
+.filter.active{background:var(--seg);color:var(--text);box-shadow:0 1px 2.5px rgba(0,0,0,.16);font-weight:600}
+
+/* Orders */
+.order-list{display:flex;flex-direction:column}
+.order-row{display:grid;grid-template-columns:72px minmax(148px,1.2fr) minmax(140px,1fr) 88px minmax(128px,auto);align-items:center;gap:12px;min-height:62px;padding:9px 15px;border-top:1px solid var(--line-soft)}
+.order-row:first-child{border-top:0}
+.order-row:hover{background:var(--fill)}
+.order-time strong{display:block;font:600 15px var(--mono)}
+.order-time span{color:var(--dim);font-size:10px}
+.order-main strong{display:block;font-size:13px;font-weight:600}
+.order-main span,.order-detail span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.order-detail strong{font-size:12px;font-weight:500}
+.order-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.order-actions select{height:30px;max-width:130px;font-size:12px}
+.order-actions .text-btn{height:30px}
+.overdue .order-time strong,.overdue .order-time span{color:var(--red)}
+.current-job{padding:17px}
+.current-job-top{display:flex;justify-content:space-between;gap:12px}
+.current-job h2{margin:4px 0 6px;font-size:20px;font-weight:700}
+.current-job-meta{display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.current-job-meta span{display:inline-flex;align-items:center;gap:5px}
+.current-job-actions{display:flex;align-items:center;gap:8px;margin-top:16px}
+
+/* Staff rail */
+.crew-list{display:flex;flex-direction:column}
+.crew-row{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:52px;padding:8px 13px;border-top:1px solid var(--line-soft)}
+.crew-row:first-child{border-top:0}
+.crew-name{min-width:0}
+.crew-name strong{display:block;font-size:12px;font-weight:600}
+.crew-name span{display:block;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.crew-state{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:500}
+.status-control{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.status-key{height:54px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:11px;font-weight:500;box-shadow:var(--shadow-sm)}
+.status-key:hover{background:var(--fill)}
+.status-key.active{border-color:color-mix(in srgb,var(--status) 55%,transparent);background:color-mix(in srgb,var(--status) 11%,transparent);color:var(--text);font-weight:600}
+
+/* Timeline */
+.tl-wrap{overflow-x:auto;padding:8px 15px 14px}
+.tl{min-width:660px}
+.tl-row{display:grid;grid-template-columns:var(--tlname) minmax(0,1fr);align-items:center;min-height:32px}
+.tl-axis{min-height:20px;margin-bottom:2px}
+.tl-scale{position:relative;height:14px}
+.tl-scale span{position:absolute;transform:translateX(-50%);font:10px var(--mono);color:var(--dim);white-space:nowrap}
+.tl-scale span:first-child{transform:none}
+.tl-scale span:last-child{transform:translateX(-100%)}
+.tl-name{font-size:12px;white-space:nowrap;overflow:hidden;padding-right:10px;display:flex;align-items:center;gap:5px}
+.tl-name>span.nm{overflow:hidden;text-overflow:ellipsis}
+.tl-name em{font-style:normal;color:var(--dim);font-size:10px;margin-left:auto;flex:0 0 auto}
+.tl-on{width:6px;height:6px;border-radius:50%;background:var(--green);flex:0 0 auto}
+.tl-track{position:relative;height:24px;background:var(--fill);border-radius:6px}
+.tl-band{position:absolute;top:0;bottom:0;border-radius:6px}
+.tl-bar{position:absolute;top:4px;height:16px;border-radius:6px;background:var(--orange);color:#fff;font:600 9px var(--sans);padding:3px 6px;white-space:nowrap;overflow:hidden;box-shadow:var(--shadow-sm)}
+.tl-bar.done{background:color-mix(in srgb,var(--green) 80%,#000)}
+.tl-bar.conflict{background:var(--red)}
+.tl-now{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--accent);border-radius:1px}
+.conflict-list{padding:0 15px 12px}
+.conflict{display:flex;gap:7px;align-items:center;color:var(--red);font-size:11px;margin-top:8px}
+/* 班次与人员概览 */
+.shift-list{display:flex;flex-direction:column}
+.shift-row{display:grid;grid-template-columns:11px minmax(56px,auto) minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 13px;border-top:1px solid var(--line-soft)}
+.shift-row:first-child{border-top:0}
+.shift-row.active{background:color-mix(in srgb,var(--green) 8%,transparent)}
+.shift-swatch{width:11px;height:11px;border-radius:3px}
+.shift-meta strong{display:block;font-size:12px;font-weight:600}
+.shift-meta span{display:block;color:var(--dim);font:10px var(--mono);margin-top:1px}
+.shift-people{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shift-people i{color:var(--dim);font-style:normal}
+.shift-count{font-size:11px;color:var(--dim);white-space:nowrap}
+/* 顶栏在岗 */
+.duty-pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:999px;background:color-mix(in srgb,var(--green) 14%,transparent);color:color-mix(in srgb,var(--green) 76%,var(--text));font-size:12px;font-weight:600;white-space:nowrap}
+.duty-pill b{font-weight:700;font-variant-numeric:tabular-nums}
+
+/* Settings and tables */
+.data-table{width:100%;border-collapse:collapse}
+.data-table th{text-align:left;color:var(--muted);font-size:11px;font-weight:600;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+.data-table td{padding:8px 8px;border-bottom:1px solid var(--line-soft);font-size:12px;vertical-align:middle}
+.data-table tr:last-child td{border-bottom:0}
+.data-table input,.data-table select{width:100%;height:34px;font-size:13px}
+.table-scroll{overflow:auto}
+.table-scroll .data-table{min-width:0}
+.data-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+/* 安静输入:表格/人员/分组的框默认无边，悬停或聚焦才显 —— 减少"方框太多、眼花缭乱" */
+.data-table input,.data-table select,.ca-f select,.grp-mrow .grp-nm,.grp-mrow .grp-sort{border-color:transparent;background-color:transparent}
+.data-table input:hover,.data-table select:hover,.ca-f select:hover,.grp-mrow .grp-nm:hover,.grp-mrow .grp-sort:hover{background-color:var(--fill)}
+.data-table input:focus,.data-table select:focus,.ca-f select:focus,.grp-mrow .grp-nm:focus,.grp-mrow .grp-sort:focus{background-color:var(--surface);border-color:var(--line)}
+/* 配置页:时间/数字框收窄,名称列自动填充,避免拉伸稀疏(仅桌面) */
+@media(min-width:901px){
+  .data-table input[data-field="start"],.data-table input[data-field="end"]{width:120px}
+  .data-table input[data-field="minutes"],.data-table input[data-field="buffer"]{width:96px;text-align:center}
+  .data-table input[data-field="room"]{width:110px}
+  .settings-wrap{max-width:780px}
+}
+.person-cell{display:flex;align-items:center;gap:9px;min-width:140px}
+.person-cell .avatar{width:26px;height:26px;font-size:11px}
+.person-cell strong{font-weight:600}
+.add-row{display:grid;grid-template-columns:1.2fr .7fr 1fr .8fr auto;gap:8px;padding:12px;border-top:1px dashed var(--line)}
+.audit-row{display:grid;grid-template-columns:112px 96px 118px minmax(0,1fr);gap:12px;padding:10px 15px;border-top:1px solid var(--line-soft);font-size:12px}
+.audit-row:first-child{border-top:0}
+.audit-row time{font:10px var(--mono);color:var(--dim)}
+.audit-row strong{font-weight:600}
+.request-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px}
+.preview{padding:16px;position:sticky;top:14px}
+.preview-time{font:600 24px var(--mono);margin:8px 0 8px;letter-spacing:.3px}
+.preview-time.urgent{color:var(--red)}
+.when-tabs{display:flex;width:100%}
+.when-tabs .filter{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px}
+.when-tabs .filter .icon-sm{width:14px;height:14px}
+.when-hint{display:flex;align-items:center;gap:6px;margin:10px 2px 0;font-size:12px;color:var(--muted);line-height:1.6}
+.when-hint.urgent{color:var(--red)}
+.book-panel{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+.day-quick{display:flex;gap:8px}
+.chip{height:30px;padding:0 15px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--text);font-size:12px;font-weight:500;cursor:pointer}
+.chip.active{background:var(--accent);color:#fff;border-color:transparent}
+.book-fields{display:flex;gap:10px}
+.book-fields.three{grid-template-columns:1.15fr .85fr .85fr}
+.book-fields .bf{flex:1;display:flex;flex-direction:column;gap:4px}
+.book-fields .bf label{font-size:11px;color:var(--muted)}
+.book-fields input{height:38px;width:100%}
+.badge-urgent{display:inline-block!important;width:auto!important;font-size:10px;font-weight:700;color:#fff!important;background:var(--red);border-radius:6px;padding:1px 6px;vertical-align:middle;margin:0 3px 0 0!important}
+.order-row.urgent{background:color-mix(in srgb,var(--red) 6%,transparent)}
+.order-row.urgent .order-time strong{color:var(--red)}
+.gchip{display:inline-flex!important;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;font-size:11px!important;font-weight:600;background:color-mix(in srgb,var(--gc) 15%,transparent);color:color-mix(in srgb,var(--gc) 66%,var(--text))!important;white-space:nowrap;vertical-align:middle;margin-top:4px!important}
+.gchip .gdot{width:6px;height:6px;border-radius:50%;background:var(--gc)}
+.crew-tbl{display:flex;flex-direction:column}
+.ca-row{display:grid;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line-soft)}
+.crew-tbl.as-admin .ca-row{grid-template-columns:56px minmax(150px,1fr) 158px 100px 108px minmax(84px,auto)}
+.crew-tbl.as-lead .ca-row{grid-template-columns:56px minmax(150px,1fr) 158px 100px minmax(84px,auto)}
+.ca-row:first-child{border-top:0}
+.crew-sec{display:flex;align-items:center;gap:8px;padding:12px 10px 6px;margin-top:4px}
+.crew-sec:first-of-type{margin-top:2px}
+.crew-sec-dot{width:10px;height:10px;border-radius:3px;flex:none}
+.crew-sec strong{font-size:13px;font-weight:600}
+.crew-sec .dim{font-size:11px}
+.crew-sec + .ca-row{border-top:0}
+.ca-head{padding:0 4px 9px}
+.ca-head span{font-size:11px;color:var(--muted);font-weight:600}
+.ca-head span.c{text-align:center}
+.ca-head span.r{text-align:right}
+.ca-who{display:flex;align-items:center;gap:10px;min-width:0}
+.ca-nm{min-width:0}
+.ca-nm strong{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ca-nm .dim{font-size:11px}
+.ca-f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ca-f select{height:34px;font-size:13px;width:100%}
+.ca-ro{height:34px;display:inline-flex;align-items:center;font-size:13px;color:var(--muted);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ca-ro .dim{font-size:11px}
+.ca-lab{display:none;font-size:11px;color:var(--muted);font-style:normal}
+.ca-tog{display:flex;justify-content:center;align-items:center}
+.ca-tail{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.ca-tail .text-btn{white-space:nowrap}
+.ca-none{color:var(--muted);font-size:13px;grid-column:2 / -1}
+@media(max-width:900px){
+  /* iOS 聚焦防放大:所有可输入控件字号≥16px */
+  input,select,textarea{font-size:16px!important}
+  html,body{touch-action:manipulation}
+  .crew-tbl.as-admin,.crew-tbl.as-lead{padding:0 10px 10px}
+  .crew-tbl.as-admin .ca-row,.crew-tbl.as-lead .ca-row{display:flex;flex-wrap:wrap;gap:6px;padding:8px 9px;border:1px solid var(--line-soft);border-radius:10px;margin-bottom:6px;background:var(--surface)}
+  .crew-tbl.as-admin .ca-head,.crew-tbl.as-lead .ca-head{display:none}
+  .ca-who{order:1;flex:1 1 calc(100% - 92px);min-width:0}
+  .ca-row .crew-state{order:2;margin-left:auto;align-self:center;flex:none}
+  /* 身份/班次/组别/请假 一行放下(最小宽保证换到第二行) */
+  .ca-f{order:3;flex:1 1 72px;min-width:72px}
+  .ca-f select{background:var(--fill)!important;border:0!important;border-radius:7px;height:32px;padding:0 6px;width:100%;text-overflow:ellipsis}
+  .ca-lab{display:none}
+  .ca-who .avatar{width:26px;height:26px;font-size:11px}
+  .ca-nm strong{font-size:13px}
+  .ca-nm .dim{display:none}
+  .ca-tail .text-btn{height:32px;padding:0 8px;border-radius:7px;background:var(--fill);border:0;font-size:12px;flex:none;justify-content:center;white-space:nowrap}
+  .ca-ro{height:32px;background:var(--fill);border-radius:7px;padding:0 8px;font-size:12px;display:inline-flex;align-items:center}
+  .ca-tog{flex-direction:column;gap:4px}
+  .ca-tail{order:4;flex:0 0 auto;justify-content:flex-end;margin:0;align-self:center;padding-bottom:0}
+  .ca-none{order:3;width:100%}
+  .crew-sec{padding:10px 2px 4px}
+}
+.lead-tag,.intern-tag{display:inline-block!important;width:auto!important;font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;vertical-align:middle;margin-left:4px;line-height:1.6}
+.lead-tag{color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent)}
+.intern-tag{color:var(--orange);background:color-mix(in srgb,var(--orange) 16%,transparent)}
+/* 分组管理 */
+.grp-mgr{display:flex;flex-direction:column;margin:2px 0 4px}
+.grp-mrow{display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--line-soft)}
+.grp-mrow:first-child{border-top:0}
+.grp-auto{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);white-space:nowrap;flex:none}
+@media(max-width:900px){.grp-mrow{flex-wrap:wrap;gap:8px 10px}.grp-mrow .grp-nm{flex:1 1 100%;order:-1}}
+.grp-swatch{width:16px;height:16px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.grp-nm{flex:1;min-width:120px;height:36px}
+.grp-color{width:42px;height:34px;padding:2px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer;flex:none}
+.grp-sort{width:64px;height:36px;text-align:center;flex:none}
+.grp-add{grid-template-columns:1.5fr 56px .8fr auto!important}
+.grp-add input[type=color]{width:100%;height:38px;padding:2px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer}
+/* 组色 Tab 高亮：选中时染成该组颜色 */
+.filter.active[style*="--gc"]{border-color:var(--gc)!important;color:color-mix(in srgb,var(--gc) 68%,var(--text))!important;background:color-mix(in srgb,var(--gc) 12%,transparent)!important}
+.tl-steps{display:flex;margin:8px 0 4px}
+.tl-step{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;position:relative;opacity:.42}
+.tl-step.done{opacity:1}
+.tl-step::before{content:"";position:absolute;top:6px;left:-50%;width:100%;height:2px;background:var(--line)}
+.tl-step:first-child::before{display:none}
+.tl-step.done::before{background:var(--accent)}
+.tl-node{width:14px;height:14px;border-radius:50%;background:var(--line);border:2px solid var(--surface);z-index:1}
+.tl-step.done .tl-node{background:var(--accent)}
+.tl-txt{display:flex;flex-direction:column;align-items:center;gap:1px}
+.tl-txt strong{font-size:12px;font-weight:600}
+.tl-txt span{font-size:12px;color:var(--muted)}
+.mini-dl{display:grid;grid-template-columns:1fr auto;gap:7px 14px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+.mini-dl dt{color:var(--muted);font-size:13px}
+.mini-dl dd{font-size:13px;font-weight:600;text-align:right}
+.preview dl{display:grid;grid-template-columns:1fr auto;gap:9px;margin:18px 0 0;font-size:12px}
+.preview dt{color:var(--muted)}
+.preview dd{margin:0}
+.mobile-nav{display:none}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);opacity:0;pointer-events:none;z-index:100;background:var(--chrome);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);border:1px solid var(--line-soft);border-radius:10px;padding:10px 16px;font-size:12px;font-weight:500;box-shadow:var(--shadow);transition:.2s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+/* 下单备注/附件 + 媒体弹窗 */
+textarea{width:100%;min-height:64px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical;box-shadow:var(--shadow-sm)}
+textarea:focus-visible{border-color:var(--accent);outline:none}
+textarea::placeholder{color:var(--dim)}
+.media-pick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.media-pick .text-btn{cursor:pointer}
+.media-btn{position:relative;overflow:hidden}
+.file-over{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+.file-over::-webkit-file-upload-button{cursor:pointer}
+/* 工单卡片的元信息行:组别/进度徽标/详情按钮统一成同高胶囊、等距对齐 */
+.order-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:8px}
+.order-meta>*{margin-top:0!important}
+.order-meta .gchip,.order-meta .prog{height:22px}
+.order-extra{display:inline-flex;gap:5px;align-items:center;height:22px;padding:0 10px;border-radius:999px;background:var(--fill);border:0;cursor:pointer;font:inherit;color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap}
+.order-extra:hover{background:var(--fill-2)}
+.order-extra:active{opacity:.6}
+.order-extra .icon-sm{color:var(--muted)}
+.prog{display:inline-flex!important;align-items:center;gap:4px;font:600 11px/1 var(--mono);white-space:nowrap;padding:3px 8px;border-radius:999px;margin-top:4px!important;vertical-align:middle}
+.prog .tmr{font-variant-numeric:tabular-nums;letter-spacing:.3px}
+.prog.live{color:var(--accent)!important;background:color-mix(in srgb,var(--accent) 13%,transparent)}
+.prog.live.overrun{color:var(--red)!important;background:color-mix(in srgb,var(--red) 13%,transparent)}
+.prog.idle{color:var(--orange)!important;background:color-mix(in srgb,var(--orange) 13%,transparent)}
+.prog.fin{color:var(--green)!important;background:color-mix(in srgb,var(--green) 13%,transparent)}
+.big-timer{display:inline-flex;align-items:center;gap:7px;font:700 24px/1 var(--mono);color:var(--accent);font-variant-numeric:tabular-nums;padding:8px 14px;border-radius:12px;background:color-mix(in srgb,var(--accent) 11%,transparent)}
+.start-hint{font-size:12px}
+.modal-mask{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:grid;place-items:start center;padding:max(48px,9vh) 20px 20px;animation:fade .15s ease;overflow:auto}
+.cfm-mask{place-items:center;z-index:260}
+.cfm{width:min(92vw,360px);background:var(--surface);border-radius:16px;padding:20px 18px 16px;box-shadow:0 18px 50px rgba(0,0,0,.3)}
+.cfm p{font-size:15px;font-weight:600;line-height:1.45;margin-bottom:14px}
+.cfm-ta{width:100%;min-height:76px;margin-bottom:12px}
+.cfm-ta.err{border-color:#ff3b30;background:color-mix(in srgb,#ff3b30 5%,var(--surface))}
+.cfm-btns{display:flex;gap:10px}
+.cfm-btns button{flex:1;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:14px;font-weight:600;color:var(--text);cursor:pointer}
+.cfm-btns .cfm-ok{background:var(--accent);border-color:var(--accent);color:#fff}
+.cfm-btns .cfm-ok.danger{background:#ff3b30;border-color:#ff3b30}
+.modal{width:min(520px,100%);background:var(--surface);border:1px solid var(--line-soft);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.modal-head strong{font-size:14px;font-weight:600}
+.modal-note{margin:0 0 12px;font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap;background:var(--fill);border-radius:8px;padding:10px 12px}
+.dm{border-top:1px solid var(--line-soft);margin-top:14px;padding-top:6px}
+.dm-foot{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.dm-foot .text-btn{margin-top:0}
+.dm-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+.dm-row select{flex:1;min-width:130px;height:34px}
+.dm-urg{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap}
+.text-btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 32%,var(--line))}
+.text-btn.danger:hover{background:color-mix(in srgb,var(--red) 9%,transparent)}
+.alert-set{display:flex;flex-direction:column;gap:4px}
+.alert-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 12px;border-radius:10px;cursor:pointer}
+.alert-row:hover{background:var(--fill)}
+.alert-row div{display:flex;flex-direction:column;gap:2px}
+.alert-row strong{font-size:14px;font-weight:600}
+.alert-row span:not(.switch){font-size:12px;color:var(--muted)}
+.switch{position:relative;flex:none;width:42px;height:25px}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.switch i{position:absolute;inset:0;background:var(--line);border-radius:999px;transition:background .18s}
+.switch i::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .18s}
+.switch input:checked+i{background:var(--accent)}
+.switch input:checked+i::after{transform:translateX(17px)}
+.alert-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.alert-hint{margin:12px 2px 0;font-size:12px;color:var(--muted);line-height:1.6}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+/* 统计 */
+.metric em{font-style:normal;font-size:12px;color:var(--muted);font-weight:500}
+.trend{display:flex;align-items:flex-end;gap:3px;height:150px;overflow-x:auto;padding-bottom:2px}
+.trend-col{flex:0 0 auto;width:24px;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end}
+.trend-bar{width:16px;min-height:3px;background:color-mix(in srgb,var(--accent) 26%,transparent);border-radius:4px 4px 0 0;display:flex;flex-direction:column-reverse}
+.trend-done{display:block;width:100%;background:var(--accent);border-radius:4px 4px 0 0}
+.trend-x{font:9px var(--mono);color:var(--dim);white-space:nowrap;visibility:hidden}
+.trend-col:nth-child(3n+1) .trend-x{visibility:visible}
+.trend{padding:0 6px 2px}
+.stat-ptable{display:flex;flex-direction:column}
+.stat-prow{display:grid;grid-template-columns:minmax(72px,1.4fr) .6fr .6fr .7fr 1.1fr .9fr;gap:8px;align-items:center;padding:11px 15px;border-top:1px solid var(--line-soft);font-size:12px;cursor:pointer}
+.stat-prow.head{cursor:default;color:var(--muted);font-size:11px;font-weight:600;border-top:0}
+.stat-prow:not(.head):hover{background:var(--fill)}
+.stat-prow.open{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.stat-prow .nm{font-weight:600}
+.stat-detail{padding:2px 15px 14px;background:color-mix(in srgb,var(--accent) 4%,transparent);border-top:1px solid var(--line-soft)}
+.detail-day{margin-top:10px}
+.detail-date{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:4px}
+.detail-order{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line-soft);font-size:12px;flex-wrap:wrap}
+.detail-order .mono{color:var(--muted);flex:0 0 auto}
+.type-row{display:grid;grid-template-columns:minmax(64px,auto) minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px 0}
+.type-name{font-size:12px;font-weight:500}
+.type-bar{height:8px;background:var(--fill);border-radius:4px;overflow:hidden}
+.type-bar span{display:block;height:100%;background:var(--accent);border-radius:4px}
+.type-num{font:11px var(--mono);color:var(--muted);white-space:nowrap}
+
+/* 排班图:分段控件 + 周视图 + 月视图 */
+.seg{display:inline-flex;background:color-mix(in srgb,var(--muted) 15%,transparent);border-radius:10px;padding:2px;gap:2px}
+.seg-btn{border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;padding:5px 13px;border-radius:8px;cursor:pointer;font-family:inherit}
+.seg-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.sched-load{display:flex;align-items:center;justify-content:center;gap:8px;padding:44px;color:var(--muted)}
+.sched-load .icon{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* 排班网格表:所有人×小时,格子=有空/忙/下班,条=几点·团队·任务 */
+.ag-legend{display:flex;flex-wrap:wrap;gap:6px 15px;padding:9px 2px 2px;font-size:11px;color:var(--muted)}
+.ag-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.ag-legend .lf{background:color-mix(in srgb,var(--green) 30%,transparent)}
+.ag-legend .lo{background:color-mix(in srgb,var(--muted) 16%,transparent)}
+.ag-legend .lb{background:var(--accent)}
+/* 图2式:时段(行) × 人(列) 格子表 */
+.dg-wrap{overflow-x:hidden;overflow-y:auto;border-radius:8px}
+.dg{--mem:2;--dgrow:32px;display:flex;flex-direction:column}
+.dg-row{display:grid;grid-template-columns:44px repeat(var(--mem),minmax(0,1fr));border-top:1px solid var(--line-soft)}
+.dg-row:not(.dg-head){min-height:var(--dgrow)}
+.dg-head{flex:none;border-top:0;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;background:var(--surface)}
+.dg-time{display:flex;align-items:center;gap:4px;justify-content:flex-end;padding:0 6px;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;background:var(--surface);min-height:0;border-right:1px solid var(--line)}
+.dg-head .dg-time{justify-content:center;font-weight:600;min-height:34px}
+.dg-nowtag{font-style:normal;font-size:9px;color:var(--accent);font-weight:700}
+.dg-mem{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:4px 3px;font-size:12px;font-weight:600;min-width:0}
+.dg-mline{display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;max-width:100%}
+.dg-mem .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dg-mem .status-dot{flex:none}
+.dg-sh{font-style:normal;font-size:9px;font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;font-variant-numeric:tabular-nums}
+/* 周/月统一网格:列=人 行=日期 */
+.rg .dg-row{grid-template-columns:64px repeat(var(--mem),minmax(0,1fr))}
+.rg .dg-row:not(.dg-head){min-height:42px}
+.rg-cell{border-left:1px solid var(--line-soft);border-top:0;border-right:0;border-bottom:0;display:flex;flex-direction:column;gap:2px;padding:3px;background:none;cursor:pointer;min-width:0;align-items:stretch;justify-content:center;font:inherit;color:inherit}
+.rg-cell:hover{background:var(--fill)}
+.rg-chip{font-size:10px;line-height:1.6;border-radius:4px;padding:0 4px;background:color-mix(in srgb,var(--gc) 20%,transparent);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid var(--gc);text-align:left}
+.rg-chip.done{opacity:.5}
+.rg-more{font-size:9px;color:var(--muted);text-align:left;padding-left:2px}
+.rg-day{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:0;background:var(--surface);border:0;cursor:pointer;padding:2px 6px;font:inherit;color:inherit}
+.rg-day b{font-size:11px;font-weight:600}
+.rg-day i{font-style:normal;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rg-pend{font-style:normal;font-size:9px;color:var(--orange);font-weight:700}
+.rg-today{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.rg-today .rg-day b{color:var(--accent)}
+.rg-past{opacity:.55}
+.rg-wrap{overflow-y:auto}
+.dg-row.dg-end{border-top:2px dashed color-mix(in srgb,var(--accent) 60%,transparent);min-height:22px!important;position:sticky;bottom:0;z-index:5;background:var(--surface)}
+.dg-row.dg-end .dg-time{color:var(--accent);font-weight:700;min-height:22px}
+.dg-endlab{grid-column:2/-1;display:flex;align-items:center;padding:3px 8px;font-size:10px;color:var(--muted)}
+.dg-row{position:relative}
+.dg-row.now{background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.dg-nowline{position:absolute;left:0;right:0;height:2px;background:color-mix(in srgb,var(--accent) 85%,transparent);z-index:4;pointer-events:none;box-shadow:0 0 4px color-mix(in srgb,var(--accent) 45%,transparent)}
+.dg-nowline::before{content:"";position:absolute;left:2px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.dg-tailbtn{border:0;border-radius:5px;margin-top:1px;padding:1px 6px;font-size:10px;font-weight:600;background:color-mix(in srgb,var(--green) 20%,var(--surface));color:color-mix(in srgb,var(--green) 80%,var(--text));cursor:pointer;white-space:nowrap;align-self:stretch}
+.dg-tailbtn:hover{background:color-mix(in srgb,var(--green) 30%,var(--surface))}
+.dg-row.now .dg-time{color:var(--accent);font-weight:700}
+.dg-cell{border-left:1px solid var(--line-soft);min-height:0;padding:1.5px;display:flex;flex-direction:column;gap:1.5px;overflow:hidden}
+.dg-cell.clash{outline:1.5px solid #ff3b30;outline-offset:-1.5px;border-radius:5px}
+.dg-free,.dg-off{flex:1;border-radius:3px;min-height:0}
+.dg-free{background:color-mix(in srgb,var(--green) 22%,transparent)}
+.dg-off{background:color-mix(in srgb,var(--muted) 12%,transparent)}
+.dg-row.pastrow{filter:grayscale(.85);opacity:.45}
+.dg-job{flex:1;min-height:0;background:color-mix(in srgb,var(--gc) 12%,var(--surface));color:var(--text);border-left:3px solid var(--gc);border-radius:4px;padding:1px 6px;font-size:11px;line-height:1.12;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center}
+.dg-cell.cov{padding-top:0;padding-bottom:0}
+.dg-job.solo{border-radius:5px;margin:1.5px 0}
+.dg-job.st{border-radius:5px 5px 0 0;margin-top:1.5px}
+.dg-job.mid{border-radius:0}
+.dg-job.ends{border-radius:0 0 5px 5px;margin-bottom:1.5px}
+.dg-job.mid,.dg-job.ends{min-height:100%}
+.dg-job b{font-weight:600;color:color-mix(in srgb,var(--gc) 55%,var(--text));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dg-job span{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dg-job.done{background:color-mix(in srgb,var(--muted) 6%,var(--surface));border-left-color:var(--green)}
+.dg-job.done b{color:var(--muted)}
+.dg-job.done b::before{content:"✓ ";color:var(--green);font-weight:700}
+.dg-job:hover{background:color-mix(in srgb,var(--gc) 22%,var(--surface))}
+button.dg-cell{border:0;border-left:1px solid var(--line-soft);background:none;font:inherit;position:relative}
+.dg-cell.can{cursor:pointer}
+.dg-cell.can i{display:block;font-style:normal}
+.dg-plus{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:13px;font-weight:700;color:color-mix(in srgb,var(--green) 80%,var(--text));opacity:0;transition:opacity .12s}
+.dg-cell.can:hover .dg-plus{opacity:1}
+.dg-cell.can:hover i.dg-free{background:color-mix(in srgb,var(--green) 20%,transparent)}
+.dg-cell.can:active{transform:scale(.98)}
+button.dg-mem{border:0;background:none;font:inherit;cursor:pointer;border-radius:8px}
+button.dg-mem:hover{background:var(--fill)}
+button.dg-mem .nm{text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 40%,transparent);text-underline-offset:3px}
+.dg.dense .dg-job span{display:none}
+.dg.dense .dg-job{padding:0 5px}
+.dg.dense .dg-job b{font-size:10px}
+.dg.dense .dg-cell{padding:1px;gap:1px}
+.dg-pend{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;margin-bottom:10px;background:color-mix(in srgb,#ff9f0a 8%,var(--surface));border:1px solid color-mix(in srgb,#ff9f0a 26%,var(--line));border-radius:10px;font-size:12px;color:var(--muted)}
+.dg-pchip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:0;border-left:2px dashed #ff9f0a;border-radius:5px;background:color-mix(in srgb,#ff9f0a 10%,var(--surface));color:var(--text);font:500 11px var(--sans);cursor:pointer}
+.dg-pchip b{color:color-mix(in srgb,var(--gc) 70%,var(--text));font-variant-numeric:tabular-nums;flex:none}
+/* 本周:7天竖列表(点某天进日表) */
+.wv{display:flex;flex-direction:column;padding:2px 10px 4px}
+.wv-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-top:1px solid var(--line-soft);padding:10px 2px;cursor:pointer;min-height:52px}
+.wv-row:first-child{border-top:0}
+.wv-row:hover{background:var(--fill)}
+.wv-row.today{background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:10px}
+.wv-row.past{opacity:.55}
+.wv-day{flex:0 0 58px}
+.wv-day strong{display:block;font-size:13px;font-weight:600}
+.wv-row.today .wv-day strong{color:var(--accent)}
+.wv-day em{font-style:normal;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.wv-mid{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.wv-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;border-left:2px solid var(--gc);background:color-mix(in srgb,var(--gc) 12%,var(--surface));font-size:11px;color:var(--text);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.wv-chip b{color:color-mix(in srgb,var(--gc) 70%,var(--text));font-variant-numeric:tabular-nums}
+.wv-chip.done{background:color-mix(in srgb,var(--muted) 6%,var(--surface));border-left-color:var(--green);color:var(--muted)}
+.wv-none{font-size:11px;color:var(--dim)}
+.wv-cnt{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);white-space:nowrap}
+.wv-pend{font-style:normal;color:#ff9f0a;font-weight:600}
+/* 本月:标准月历(点某天进日表) */
+.mv{padding:4px 10px 6px}
+.mv-head{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+.mv-head span{text-align:center;font-size:11px;color:var(--muted);font-weight:600}
+.mv-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.mv-cell{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;aspect-ratio:1.15;border:1px solid var(--line-soft);border-radius:10px;background:var(--surface);cursor:pointer;padding:2px}
+.mv-cell.empty{background:transparent;border:0;cursor:default}
+.mv-cell:hover:not(.empty){background:var(--fill)}
+.mv-cell.has{background:color-mix(in srgb,var(--gc) 10%,var(--surface));border-color:color-mix(in srgb,var(--gc) 30%,var(--line))}
+.mv-cell.past{opacity:.5}
+.mv-cell.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.mv-d{font-style:normal;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mv-cell.today .mv-d{color:var(--accent);font-weight:700}
+.mv-n{font-size:14px;font-weight:700;color:color-mix(in srgb,var(--gc) 65%,var(--text));font-variant-numeric:tabular-nums}
+.mv-hint{margin-top:8px;font-size:11px;color:var(--dim);text-align:center}
+.ag-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:12px}
+/* 顶部一行仪表条:谁有空(点头像派单)+指标胶囊 */
+.dash{display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 2px 8px;flex:none}
+.dash::-webkit-scrollbar{display:none}
+.dash-lb{font-size:11px;color:var(--dim);white-space:nowrap;flex:none;display:inline-flex;align-items:center;height:32px}
+.dash-av{display:inline-flex;align-items:center;gap:5px;height:32px;padding:2px 11px 2px 3px;border-radius:16px;border:1px solid color-mix(in srgb,var(--green) 38%,var(--line));background:color-mix(in srgb,var(--green) 7%,var(--surface));cursor:pointer;flex:none;transition:transform .1s}
+.dash-av:active{transform:scale(.95)}
+.dash-av .avatar{width:26px;height:26px;font-size:11px}
+.dash-av span{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap}
+.dash-new{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 12px;border-radius:16px;border:1px dashed var(--line);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;flex:none}
+.dash-sep{width:1px;height:18px;background:var(--line);flex:none}
+.dp{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 11px;border-radius:16px;background:var(--surface);border:1px solid var(--line-soft);font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
+.dp b{font-size:14px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+.dp.g b{color:var(--green)}.dp.a b{color:#ff9f0a}.dp.r{border-color:color-mix(in srgb,#ff3b30 55%,var(--line))}.dp.r b{color:#ff3b30}
+button.dp{cursor:pointer}
+button.dp:hover{border-color:var(--line)}
+/* 总览零滚动布局 */
+.ws-dash{height:calc(100dvh - 56px);overflow:hidden;display:flex;flex-direction:column;padding-bottom:14px}
+.ws-dash #view{flex:1;min-height:0;display:flex;flex-direction:column}
+.ws-dash .gtabs{margin-bottom:10px;flex:none}
+.ws-dash .banner{flex:none}
+.ws-dash .tl-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+.ws-dash .tl-panel .panel-head{flex:none}
+.ws-dash .dg-wrap{flex:1;min-height:0}
+.ws-dash .wv,.ws-dash .mv{flex:1;min-height:0;overflow-y:auto}
+.ws-dash .dg-pend{flex:none;margin:8px 12px 0}
+.ws-dash .ag-legend{flex:none;padding:7px 12px 9px}
+.gtabs{margin-bottom:14px}
+.tb-tabs{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;margin:0 14px}
+.tb-tabs::-webkit-scrollbar{display:none}
+.topbar .tb-tabs .filter{height:30px;padding:0 12px}
+.workspace .gtabs,.workspace .pgtabs,#reqGroupSeg{display:none}
+.qsheet-mask{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.34);display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:901px){.qsheet-mask{align-items:center;padding:24px}.qsheet{border-radius:20px;transform:translateY(14px);opacity:0;transition:transform .18s ease,opacity .18s ease;padding-bottom:18px}.qsheet.in{transform:none;opacity:1}.qs-grab{display:none}}
+.qsheet{width:100%;max-width:460px;background:var(--surface);border-radius:20px 20px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -8px 40px rgba(0,0,0,.28);transform:translateY(100%);transition:transform .22s cubic-bezier(.32,.72,0,1);max-height:calc(100dvh - 12px);display:flex;flex-direction:column;overflow:hidden}
+.qs-head,.qs-grab,.qs-foot{flex:none}
+.qsheet.in{transform:translateY(0)}
+.qs-grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 10px}
+.qs-head{display:flex;align-items:center;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line-soft)}
+.qs-head .avatar{width:44px;height:44px;font-size:16px;flex:none}
+.qs-who{flex:1;min-width:0}
+.qs-who strong{display:block;font-size:16px}
+.qs-who span{font-size:12px;color:var(--muted)}
+.qs-x{border:0;background:var(--fill);width:30px;height:30px;border-radius:50%;color:var(--muted);cursor:pointer;flex:none;display:grid;place-items:center}
+.qs-body{padding:14px 0 4px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:0;flex:1;-webkit-overflow-scrolling:touch}
+.qs-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.qs-field select,.qs-field input{width:100%;height:46px}
+.qs-custom{margin-top:8px}
+.qs-when{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qs-when button{height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer}
+.qs-when button.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--accent)}
+/* 下单页:分组行式表单(两端统一) */
+.req-form .panel-body{padding:12px 14px 16px}
+.req-grp{margin-top:12px;border:1px solid var(--line-soft);border-radius:12px;overflow:hidden;background:var(--surface)}
+.fr{display:flex;align-items:center;gap:12px;padding:2px 12px;min-height:50px}
+.fr+.fr{border-top:1px solid var(--line-soft)}
+.fr>label{flex:0 0 60px;font-size:13px;color:var(--muted);margin:0}
+.fr>select{flex:1;border:0!important;background:transparent!important;height:46px;padding-left:0;font-weight:500;min-width:0}
+.req-sec{margin-top:14px}
+.req-sec>label,.req-sec .blk{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.req-sec textarea{width:100%}
+.req-go{width:100%;height:50px;font-size:16px;margin-top:12px;justify-content:center}
+.req-sum{display:none;align-items:center;gap:6px;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--fill);font-size:13px;color:var(--muted)}
+.req-sum b{color:var(--text)}
+.qs-book{display:grid;grid-template-columns:1.2fr 1fr;gap:8px;margin-top:8px}
+.qs-book.three{grid-template-columns:1.15fr .85fr .85fr}
+.qs-dur{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.qs-dur button{flex:1;min-width:56px;height:38px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:600;cursor:pointer}
+.qs-dur button.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--accent)}
+.wb-dur{margin-top:10px}
+.req-need{color:var(--red);font-weight:600}
+.dg-cell.can,.dg-tailbtn{touch-action:none}
+.dg{position:relative}
+.dg-selbox{position:absolute;z-index:6;pointer-events:none;background:color-mix(in srgb,var(--accent) 24%,transparent);border:2px solid var(--accent);border-radius:7px;box-shadow:0 2px 12px color-mix(in srgb,var(--accent) 30%,transparent)}
+.dg-cell.dragsel{outline:2px solid var(--accent);outline-offset:-2px;background:color-mix(in srgb,var(--accent) 20%,transparent);border-radius:6px}
+.dg-cell.dragsel .dg-free{background:transparent}
+.dg-dragbadge{position:fixed;z-index:99;padding:4px 10px;border-radius:8px;background:var(--accent);color:#fff;font-size:12px;font-weight:700;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
+.media-pick{flex-wrap:wrap}
+.qs-book input{height:44px}
+.qs-info{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--fill);font-size:12px;color:var(--muted);line-height:1.5;display:flex;align-items:flex-start;gap:6px}
+.qs-info b{color:var(--text);font-variant-numeric:tabular-nums}
+.qs-field textarea{width:100%;min-height:56px}
+.qs-foot{padding-top:16px}
+.qs-foot .primary{width:100%;height:50px;font-size:16px}
+@media(max-width:1100px){:root{--rail:250px}.overview-grid{grid-template-columns:1fr}.overview-grid>.rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.request-layout{grid-template-columns:1fr}}
+@media(max-width:900px){
+  :root{--nav:0px}.app-shell{display:block}.side{display:none}.main{display:block}.topbar{height:50px;padding:0 14px}.clock{display:none}.workspace{padding:10px 10px calc(76px + env(safe-area-inset-bottom))}
+  .banner{min-height:28px;font-size:11px;padding:5px 10px;margin-bottom:10px;border-radius:7px}
+  .gtabs{margin-bottom:10px}
+  .panel{border-radius:12px}
+  .mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(var(--mobile-count),1fr);left:0;right:0;bottom:0;z-index:50;background:var(--chrome);backdrop-filter:blur(20px) saturate(1.8);-webkit-backdrop-filter:blur(20px) saturate(1.8);border-top:1px solid var(--line-soft);padding:5px 6px calc(5px + env(safe-area-inset-bottom))}
+  .mobile-nav .nav-btn{height:50px;justify-content:center;flex-direction:column;gap:3px;padding:0;font-size:10px;color:var(--muted)}
+  .mobile-nav .nav-btn .icon{color:currentColor}
+  .mobile-nav .nav-btn.active{background:transparent;color:var(--accent)}
+  .overview-grid,.grid-2,.grid-3,.overview-grid>.rail{grid-template-columns:1fr}
+  .panel-head{padding:0 12px}.panel-body{padding:12px}
+  .order-row{grid-template-columns:46px minmax(0,1fr) auto;gap:1px 8px;padding:8px 10px;align-items:start;min-height:0}.order-detail{display:none}
+  .order-time strong{font-size:13px}
+  .order-time span{display:none}
+  .order-main{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px}
+  .order-main strong{display:inline;font-size:13px;margin:0}
+  .order-main>span{display:inline;font-size:11px;margin:0}
+  .order-meta{display:contents}
+  .order-row>div:nth-last-child(2){align-self:start;margin-top:1px}
+  .order-actions{grid-column:2/4;justify-content:flex-start;margin-top:0}.order-actions select{max-width:160px}
+  .status-control{grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:4px}.status-key{height:52px}
+  .dg-endlab{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:22px}
+  .request-layout{display:flex;flex-direction:column;gap:10px}.request-layout .preview{display:none}.req-sum{display:flex}.form-grid{grid-template-columns:1fr}
+  .fr{min-height:44px;padding:2px 11px;gap:10px}
+  .req-grp{margin-top:10px}
+  .add-row{grid-template-columns:1fr 1fr}.add-row .text-btn{grid-column:1/-1}
+  /* 宽表格 → 竖排卡片(配置/人员) */
+  .table-scroll{overflow:visible}
+  .table-scroll .data-table{min-width:0}
+  .data-table{display:block}
+  .data-table thead{display:none}
+  .data-table tbody{display:block}
+  .data-table tr{display:block;position:relative;border:1px solid var(--line-soft);border-radius:10px;padding:7px 10px;margin-bottom:8px;background:var(--surface)}
+  .data-table td{display:flex;align-items:center;gap:8px;border:0;padding:3px 0;width:100%}
+  .data-table td::before{content:attr(data-label);flex:0 0 52px;color:var(--muted);font-size:11px;font-weight:500}
+  .data-table td input,.data-table td select{flex:1;width:auto;min-width:0;height:36px;background:var(--fill)!important;border:0!important;border-radius:8px;padding:0 10px}
+  .data-table td.td-del{position:absolute;top:50%;transform:translateY(-50%);right:5px;width:auto;padding:0}
+  .data-table td.td-del::before{display:none}
+  .data-table td.td-del .icon-btn{width:30px;height:30px}
+  .data-table tbody tr td:not(.td-del){padding-right:36px}
+  /* 排班图:时段×人格子表,手机上时段列收窄、可横向滑动看全组 */
+  .dg-row{grid-template-columns:40px repeat(var(--mem),minmax(0,1fr))}
+  .dg-time{padding:0 3px;font-size:9px}
+  .dg-mem{font-size:11px;padding:5px 2px}
+  .dg-job{font-size:10px;padding:1px 4px}
+  .dg-job span{font-size:9px}
+  .tl-panel .panel-head{flex-wrap:wrap;gap:6px 10px}
+  .seg{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;max-width:100%}
+  .seg::-webkit-scrollbar{display:none}
+  .seg-btn{padding:5px 9px;font-size:11.5px;white-space:nowrap;flex:none}
+  .ws-dash{height:calc(100dvh - 50px);padding:10px 12px calc(62px + env(safe-area-inset-bottom))}
+  .ws-dash .gtabs{margin-bottom:8px}
+  .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
+  .dash::-webkit-scrollbar{display:none}
+  .dash-lb{width:auto;padding-bottom:0}
+  .dash-sep{display:none}
+  .dp{height:28px;padding:0 9px;font-size:11px}.dp b{font-size:13px}
+  .dash-av{height:30px}.dash-new{height:30px}
+  .ws-dash .tl-panel .panel-head{min-height:36px}
+  .ws-dash .tl-panel .panel-head p{display:none}
+  .wv-row{min-height:48px;padding:8px 2px}
+  .mv-grid,.mv-head{gap:4px}
+  /* 添加行堆叠 */
+  .add-row{grid-template-columns:1fr!important;gap:8px}
+  .add-row .text-btn{grid-column:auto}
+  /* 统计:KPI 两行三列不溢出 */
+  .metric-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible;margin-bottom:10px}
+  .metric{min-width:0;min-height:46px;padding:6px 9px;border-radius:10px}
+  .metric strong{font-size:16px}
+  .metric span{font-size:10px;white-space:nowrap}
+  /* 统计:按人员表 → 卡片 */
+  .stat-prow.head{display:none}
+  .stat-prow{display:block;padding:10px 12px}
+  .stat-prow .nm{font-size:14px;font-weight:600;display:block;margin-bottom:4px}
+  .stat-prow>span:not(.nm){display:inline-flex;gap:3px;font-size:11px;color:var(--muted);margin-right:9px;white-space:nowrap}
+  .stat-prow>span:not(.nm)::before{content:attr(data-label)"·";color:var(--dim)}
+  .stat-detail{margin-top:8px}
+  /* 趋势图(移动端加密列宽) */
+  .trend-col{width:20px}.trend-bar{width:13px}
+  /* 审计 → 堆叠 */
+  .audit-row{grid-template-columns:1fr;min-width:0;gap:1px;padding:10px 12px}
+  .audit-row time{order:-1}
+  .login-panel{padding:34px 24px 24px}
+  /* —— 手机紧凑化 v2:总览顶栏合并、去冗余、全页面收紧 —— */
+  .duty-pill{display:none}
+  .tb-tabs{margin:0 4px}
+  .tb-tabs .filters{background:transparent;padding:0 8px 0 0;gap:2px}
+  .tb-tabs .filter{padding:0 10px;height:34px;font-size:13px;font-weight:600}
+  .ws-dash .dash{display:none}
+  .topbar.has-tabs .page-title{display:none}
+  .page-title h1{font-size:16px;white-space:nowrap}
+  .topbar{gap:4px}
+  .top-actions{gap:4px}
+  .panel-head{min-height:34px}
+  .panel-head p{font-size:10.5px}
+  /* 下单页 */
+  .req-form .panel-body{padding:10px}
+  .fr{min-height:40px;padding:1px 10px;gap:8px}
+  .fr label{font-size:12px}
+  .fr select{height:34px}
+  .req-grp{margin-top:8px}
+  .req-sec{margin-top:10px}
+  .req-sec textarea{min-height:54px}
+  .req-go{height:44px!important;font-size:15px!important}
+  .req-sum{font-size:11px}
+  .bf input{height:36px}
+  .wb-dur button{height:30px;font-size:12px}
+  .media-btn{height:34px;font-size:12px}
+  .qs-foot .primary{height:46px;font-size:15px}
+  /* 人员页 */
+  .shift-row{padding:7px 10px;gap:8px}
+  .crew-sec{padding:7px 2px 2px}
+  /* 进度/工单详情弹窗:按钮等宽等高对齐,不再换行错落 */
+  .modal .dm-row select{height:38px}
+  .modal .dm-row .text-btn{height:38px;font-size:13px}
+  .modal .dm-foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+  .modal .dm-foot .text-btn{width:100%;height:38px;font-size:13px}
+  /* 配置页 */
+  .data-table td input,.data-table td select{height:34px}
+  .data-table td::before{flex:0 0 46px}
+  .settings-wrap .panel{margin-bottom:10px!important}
+  .add-row input,.add-row .text-btn{height:38px}
+}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+<script>
+const STATUS={
+  free:{label:"空闲",className:"s-free"},busy:{label:"编灯",className:"s-busy"},
+  check:{label:"检查",className:"s-check"},rest:{label:"小休",className:"s-rest"},off:{label:"下班",className:"s-off"}
+};
+const ROLE_LABEL={admin:"管理员",staff:"灯光师",team:"团队"};
+const ROLES=["team","staff","admin"],TECH_ROLES=["灯光师","学徒"],SHIFTS=["早班","中班","晚班","机动"];
+const NAV={
+  admin:[{id:"overview",label:"总览",icon:"layout-dashboard"},{id:"request",label:"下单",icon:"square-pen"},{id:"dispatch",label:"调度",icon:"list-checks"},{id:"crew",label:"人员",icon:"users"},{id:"stats",label:"统计",icon:"bar-chart-3"},{id:"settings",label:"配置",icon:"sliders-horizontal"},{id:"audit",label:"审计",icon:"history"}],
+  lead:[{id:"overview",label:"总览",icon:"layout-dashboard"},{id:"request",label:"下单",icon:"square-pen"},{id:"dispatch",label:"调度",icon:"list-checks"},{id:"work",label:"我的工作",icon:"briefcase-business"},{id:"crew",label:"本组人员",icon:"users"},{id:"stats",label:"统计",icon:"bar-chart-3"},{id:"audit",label:"审计",icon:"history"}],
+  staff:[{id:"work",label:"我的工作",icon:"briefcase-business"},{id:"open",label:"可接工单",icon:"inbox"},{id:"crewboard",label:"同事状态",icon:"users"},{id:"stats",label:"统计",icon:"bar-chart-3"},{id:"audit",label:"审计",icon:"history"}],
+  team:[{id:"request",label:"提交需求",icon:"square-pen"},{id:"orders",label:"今日工单",icon:"clipboard-list"},{id:"crewboard",label:"同事状态",icon:"radio"},{id:"stats",label:"统计",icon:"bar-chart-3"},{id:"audit",label:"审计",icon:"history"}]
+};
+function navKey(){return (me&&me.role==="staff"&&me.lead)?"lead":(me?me.role:"team")}
+function navFor(k){const base=NAV[k]||NAV.team;if(k!=="team"&&k!=="staff")return base;const v=String(ruleV("nav_"+k,"")||"");if(!v)return base;const set=new Set(v.split(","));const f=base.filter(i=>set.has(i.id));return f.length?f:base}
+const APP_VERSION="v0720h";
+const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
+const teamLocked=()=>typeof me!=="undefined"&&me&&me.role==="team"&&String(ruleV("book_lock_sla","1"))!=="0";
+let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,boardGrp="",cfgGrp=null,cfgSec="直播团队";
+let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsGroup="";
+let schedView="day",schedDate=null,schedData=null,schedLoading=false;
+
+const THEME_KEY="dispatch_theme";
+const THEME_META={auto:{icon:"sun-moon",label:"外观：跟随系统"},light:{icon:"sun",label:"外观：浅色"},dark:{icon:"moon",label:"外观：深色"}};
+let themePref=localStorage.getItem(THEME_KEY)||"auto";if(!THEME_META[themePref])themePref="auto";
+const darkMedia=matchMedia("(prefers-color-scheme: dark)");
+function applyTheme(){const dark=themePref==="auto"?darkMedia.matches:themePref==="dark";document.documentElement.dataset.theme=dark?"dark":"light";const meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.content=dark?"#1c1c1e":"#f5f5f7"}
+function cycleTheme(){themePref=themePref==="auto"?"light":themePref==="light"?"dark":"auto";localStorage.setItem(THEME_KEY,themePref);applyTheme()}
+darkMedia.addEventListener("change",()=>{if(themePref==="auto")applyTheme()});
+applyTheme();
+
+function icon(name,small=false){return `<i data-lucide="${name}" class="icon${small?" icon-sm":""}" aria-hidden="true"></i>`}
+function esc(value){return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
+function showToast(message){const el=document.getElementById("toast");el.textContent=message;el.classList.add("show");clearTimeout(timer);timer=setTimeout(()=>el.classList.remove("show"),2400)}
+function drawIcons(){if(window.lucide)window.lucide.createIcons()}
+function avatar(user,size=""){const content=user.avatar?`<img src="${esc(user.avatar)}" alt="">`:esc((user.name||"?").slice(0,1));return `<span class="avatar ${size}">${content}</span>`}
+function statusTag(status){const item=STATUS[status]||STATUS.off;return `<span class="tag ${item.className}"><span class="status-dot"></span>${item.label}</span>`}
+function orderTag(o){/* 一单一状态:待派工→已派·待开始→进行中→已完成 */
+if(typeof o==="string")o={status:o};
+if(o.status==="done")return `<span class="tag s-done"><span class="status-dot"></span>已完成</span>`;
+if(o.status==="working")return o.started_at?`<span class="tag s-working"><span class="status-dot"></span>进行中</span>`:`<span class="tag s-idle"><span class="status-dot"></span>已派·待开始</span>`;
+if(o.status==="cancelled")return `<span class="tag s-off"><span class="status-dot"></span>已取消</span>`;
+return `<span class="tag s-wait"><span class="status-dot"></span>待派工</span>`}
+function empty(iconName,text){return `<div class="empty">${icon(iconName)}${esc(text)}</div>`}
+function toMinutes(value){const match=/^(\d{1,2}):(\d{2})$/.exec(value||"");return match?Number(match[1])*60+Number(match[2]):null}
+function nowMinutes(){const date=new Date();return date.getHours()*60+date.getMinutes()}
+function pad2d(n){return String(n).padStart(2,"0")}
+function ymd(d){return `${d.getFullYear()}-${pad2d(d.getMonth()+1)}-${pad2d(d.getDate())}`}
+const BIZ_CUTOFF_MIN=300;/* 排班日分界:凌晨5点(300分)前仍算前一天的排班日,与服务端 today() 及 nz() 归一化同源 */
+function bizNow(){return new Date(Date.now()-BIZ_CUTOFF_MIN*60*1000)}
+function nzMin(m){return m==null?null:(m<BIZ_CUTOFF_MIN?m+1440:m)}
+function todayStr(){return ymd(bizNow())}
+function addDaysStr(n){const d=bizNow();d.setDate(d.getDate()+n);return ymd(d)}
+function orderIsToday(o){return !o.date||o.date===todayStr()}
+function orderDayLabel(o){if(!o.date||o.date===todayStr())return"";if(o.date===addDaysStr(1))return"明天";if(o.date===addDaysStr(2))return"后天";return o.date.slice(5)}
+function isOverdue(order){const minutes=toMinutes(order.arrive);return order.status==="wait"&&minutes!==null&&nzMin(minutes)<nzMin(nowMinutes())&&orderIsToday(order)}
+function sortedOrders(list){return [...list].sort((a,b)=>(b.urgent?1:0)-(a.urgent?1:0)||(a.date||"9999").localeCompare(b.date||"9999")||(a.arrive||"99:99").localeCompare(b.arrive||"99:99")||a.id-b.id)}
+// ── 组 ──
+function curGroups(){return state.groups||[]}
+function groupColor(name){const g=curGroups().find(x=>x.name===name);return g?g.color:"#8E8E93"}
+function colorHex(c){return /^#[0-9a-fA-F]{6}$/.test(c||"")?c:"#8E8E93"}
+function slaForGroup(g){return (state.sla||[]).filter(s=>(s.grp||"")===g)}
+function staffForGroup(g){return (state.staff||[]).filter(p=>(p.grp||"")===g)}
+function myGroups(){if(me.role==="admin"||me.role==="team")return curGroups().map(g=>g.name);return me.grp?[me.grp]:[]}
+function defaultGroup(){const gs=myGroups();return gs[0]||((curGroups()[0]||{}).name)||""}
+function groupChip(name){if(!name)return"";return `<span class="gchip" style="--gc:${groupColor(name)}"><span class="gdot"></span>${esc(name)}</span>`}
+function ordersInGroup(list,g){return g?list.filter(o=>(o.grp||"")===g):list}
+/* 统一的分组芯片:所有页面的组切换都长一个样 */
+function grpChip(attr,val,label,active,color,extra=""){return `<button type="button" class="filter ${active?"active":""}" ${attr}="${esc(val)}"${color?` style="--gc:${color}"`:""}>${color?`<span class="gdot"></span>`:""}${esc(label)}${extra}</button>`}
+function groupTabsHtml(){const gs=myGroups();if(gs.length<=1)return"";const cur=gs.includes(boardGrp)?boardGrp:gs[0];return `<div class="filters gtabs">${gs.map(n=>grpChip("data-boardgrp",n,n,cur===n,groupColor(n))).join("")}</div>`}
+function reqGroupTabs(){if(reqGroup===null||!curGroups().some(g=>g.name===reqGroup))reqGroup=defaultGroup();return `<div class="filters">${myGroups().map(n=>grpChip("data-reqgroup",n,n,n===reqGroup,groupColor(n))).join("")}</div>`}
+function statsGrpTabs(){if(!((me.role==="admin"||me.role==="team")&&curGroups().length>1))return "";return `<div class="filters">${grpChip("data-statsgrp","","全部组",statsGroup==="","var(--muted)")}${curGroups().map(g=>grpChip("data-statsgrp",g.name,g.name,statsGroup===g.name,g.color)).join("")}</div>`}
+function cfgSecTabs(withVer){const secs=[["团队","直播团队"],["任务","任务分类与工时"],["班次","班次时间"],["分组","分组管理"],["规则","规则库"],["提醒","飞书日程提醒"],["页面","页面可见性"],["维护","数据维护"]];return `<div class="filters">${secs.map(([s,full])=>`<button class="filter ${cfgSec===full?"active":""}" data-cfgsec="${esc(full)}">${s}</button>`).join("")}${withVer?`<span class="dim" style="margin-left:10px;font-size:11px;align-self:center">${APP_VERSION}</span>`:""}</div>`}
+function scopeGroup(){return (me.role==="admin"||me.role==="team")?"":(me.grp||"")}
+function boardOrders(){return ordersInGroup(state.orders||[],boardGrp)}
+function boardStaff(){const g=boardGrp||scopeGroup();return g?staffForGroup(g):(state.staff||[])}
+function cfgTabsHtml(){if(cfgGrp===null||!curGroups().some(g=>g.name===cfgGrp))cfgGrp=(curGroups()[0]||{}).name||"";return `<div class="filters" style="margin:0 2px 12px">${curGroups().map(g=>`<button class="filter ${cfgGrp===g.name?"active":""}" data-cfggrp="${esc(g.name)}" style="--gc:${g.color}"><span class="gdot" style="width:8px;height:8px;border-radius:50%;background:var(--gc);display:inline-block;margin-right:5px"></span>${esc(g.name)}</button>`).join("")}</div>`}
+// ── 任务计时（像外卖：接单 → 开始配送(计时) → 送达(用时)）──
+function pad2(n){return String(n).padStart(2,"0")}
+function fmtDur(sec){sec=Math.max(0,Math.floor(sec));const h=Math.floor(sec/3600),m=Math.floor(sec%3600/60),s=sec%60;return h?`${h}:${pad2(m)}:${pad2(s)}`:`${m}:${pad2(s)}`}
+function tsToMs(s){return s?Date.parse(String(s).replace(" ","T")):NaN}
+function usedMin(order){const a=tsToMs(order.started_at),b=tsToMs(order.done_at);if(isNaN(a)||isNaN(b))return null;const d=(b-a)/60000;return d>=0?d:null}
+function usedText(order){const u=usedMin(order);if(u==null)return"";return u<60?`${Math.round(u)} 分钟`:`${Math.floor(u/60)} 小时 ${Math.round(u%60)} 分`}
+function orderProgress(order){/* 只补充状态标签之外的信息:计时/用时;「待开始」由状态标签统一表达,不再重复 */
+if(order.status==="working"&&order.started_at){return `<span class="prog live">${icon("timer",true)}<span class="tmr" data-since="${esc(order.started_at)}" data-plan="${order.minutes||30}">${fmtDur((Date.now()-tsToMs(order.started_at))/1000)}</span></span>`}
+if(order.status==="done"&&usedMin(order)!=null){return `<span class="prog fin">${icon("check",true)}用时 ${usedText(order)}</span>`}
+return ""}
+let _timerIv=null;
+function ensureTimerTick(){if(_timerIv)return;_timerIv=setInterval(updateTimers,1000)}
+function bindDgDrag(){const dg=document.querySelector(".dg");if(!dg||dg.__drag)return;if(!dg.querySelector("[data-book]"))return;dg.__drag=1;
+const fmtM=m=>String(Math.floor((m%1440)/60)).padStart(2,"0")+":"+String((m%1440)%60).padStart(2,"0");
+const nzf=m=>m<300?m+1440:m;
+let st=null,badge=null;
+const clearSel=()=>{dg.querySelectorAll(".dragsel").forEach(x=>x.classList.remove("dragsel"));const bx=dg.querySelector(".dg-selbox");if(bx)bx.remove();if(badge){badge.remove();badge=null}};
+const colIndex=el=>{const c=el.closest(".dg-cell")||el;const row=c.parentElement;return Array.prototype.indexOf.call(row.children,c)};
+dg.addEventListener("pointerdown",e=>{
+  const btn=e.target.closest("[data-book]");if(!btn)return;
+  const row=btn.closest(".dg-row[data-h]");if(!row)return;
+  const parts=btn.dataset.book.split("|");
+  const anchorH=Number(row.dataset.h);
+  const am=toMinutes(parts[2]);if(am==null)return;
+  const anchorMin=nzf(am);
+  const isTail=btn.classList.contains("dg-tailbtn");
+  const ci=colIndex(btn);
+  const rows=[...dg.querySelectorAll(".dg-row[data-h]")].map(r=>{const rc=r.getBoundingClientRect();return{h:Number(r.dataset.h),top:rc.top,bottom:rc.bottom,cell:r.children[ci]}});
+  const free=new Set(rows.filter(r=>r.cell&&r.cell.classList&&r.cell.classList.contains("can")&&r.cell.dataset.book&&r.cell.dataset.book.split("|")[0]===parts[0]).map(r=>r.h));
+  let lo=anchorH,hi=anchorH;
+  if(isTail){while(free.has(hi+60))hi+=60;}
+  else{while(free.has(lo-60))lo-=60;while(free.has(hi+60))hi+=60;}
+  const seRaw=parts[3]!=null?toMinutes(parts[3]):null;const seN=seRaw!=null?nzf(seRaw):Infinity;
+  const dgR=dg.getBoundingClientRect();const cellEl=btn.classList.contains("dg-tailbtn")?(btn.closest(".dg-cell")||btn):btn;const cR=cellEl.getBoundingClientRect();
+  st={oid:parts[0],date:parts[1],anchorH,anchorMin,isTail,rows,lo,hi,seN,pid:e.pointerId,x0:e.clientX,y0:e.clientY,moved:false,a:anchorMin,b:Math.min(anchorH+60,seRaw!=null?nzf(seRaw):anchorH+60),colL:cR.left-dgR.left,colW:cR.width,dgTop:dgR.top};
+},{passive:true});
+dg.addEventListener("pointermove",e=>{
+  if(!st)return;
+  if(!st.moved&&Math.abs(e.clientY-st.y0)<7&&Math.abs(e.clientX-st.x0)<7)return;
+  if(!st.moved){st.moved=true;try{dg.setPointerCapture(st.pid)}catch(_){}}
+  e.preventDefault();
+  let th=st.rows[0].h;
+  if(e.clientY>=st.rows[st.rows.length-1].bottom)th=st.rows[st.rows.length-1].h;
+  else{const hit=st.rows.find(r=>e.clientY>=r.top&&e.clientY<r.bottom);th=hit?hit.h:(e.clientY<st.rows[0].top?st.rows[0].h:st.rows[st.rows.length-1].h)}
+  th=Math.max(st.lo,Math.min(st.hi,th));
+  if(st.isTail&&th<st.anchorH)th=st.anchorH;
+  const trow=st.rows.find(r=>r.h===th);
+  let frac=trow?(e.clientY-trow.top)/Math.max(1,trow.bottom-trow.top):0;frac=Math.max(0,Math.min(1,frac));
+  const floor=st.date===todayStr()?nzf(nowMinutes()):0;
+  let a,b;
+  if(th>=st.anchorH){a=Math.max(st.anchorMin,floor);b=Math.round((th+frac*60)/5)*5;b=Math.min(b,st.hi+60,st.seN);if(b<a+10)b=Math.min(a+10,st.seN);}
+  else{b=Math.min(st.anchorH+60,st.seN);a=Math.round((th+frac*60)/5)*5;if(a<st.lo)a=st.lo;if(a<floor)a=floor;if(a>b-10)a=Math.max(b-10,floor);}
+  st.a=a;st.b=b;
+  let box=dg.querySelector(".dg-selbox");
+  if(!box){box=document.createElement("div");box.className="dg-selbox";dg.appendChild(box)}
+  const minY=m=>{const rr=st.rows.find(r2=>m>=r2.h&&m<r2.h+60);if(rr)return rr.top+((m-rr.h)/60)*(rr.bottom-rr.top);const last=st.rows[st.rows.length-1];if(m>=last.h+60)return last.bottom;return st.rows[0].top};
+  const y1=minY(a),y2=minY(b);
+  box.style.left=st.colL+"px";box.style.width=st.colW+"px";
+  box.style.top=(y1-st.dgTop)+"px";box.style.height=Math.max(4,y2-y1)+"px";
+  if(!badge){badge=document.createElement("div");badge.className="dg-dragbadge";document.body.appendChild(badge)}
+  const dur=b-a,dh=Math.floor(dur/60),dm=dur%60;
+  badge.textContent=fmtM(a)+"–"+fmtM(b)+" · "+(dur<60?dur+"分钟":(dm?dh+"小时"+dm+"分":dh+"小时"));
+  badge.style.left=Math.min(window.innerWidth-130,e.clientX+14)+"px";badge.style.top=Math.max(8,e.clientY-34)+"px";
+},{passive:false});
+const finish=e=>{
+  if(!st)return;
+  const s=st;st=null;clearSel();
+  if(!s.moved)return;
+  window.__dgSwallow=1;setTimeout(()=>{window.__dgSwallow=0},350);
+  let a=s.a;
+  if(s.date===todayStr()){const rn=nzf(nowMinutes());if(a<rn)a=rn}
+  if(s.b-a<10){showToast("时段不足 10 分钟,约不了");return}
+  openQuickOrder(s.oid,{date:s.date,at:fmtM(a),end:fmtM(s.b)});
+};
+dg.addEventListener("pointerup",finish);
+dg.addEventListener("pointercancel",()=>{st=null;clearSel()});
+}
+function moveNowLine(){const dg=document.querySelector('.dg[data-today="1"]');if(!dg)return;const nzf=m=>m<300?m+1440:m;const nowN=nzf(nowMinutes());let target=null;dg.querySelectorAll(".dg-row[data-h]").forEach(r=>{const h=Number(r.dataset.h);const past=h+60<=nowN;const cur=nowN>=h&&nowN<h+60;r.classList.toggle("pastrow",past);r.classList.toggle("now",cur);if(cur)target=r;});let line=dg.querySelector(".dg-nowline");if(!target){if(line)line.remove();return}if(!line){line=document.createElement("div");line.className="dg-nowline";}if(line.parentElement!==target)target.appendChild(line);const h=Number(target.dataset.h);line.style.top=(((nowN-h)/60)*100)+"%";const td=todayStr();dg.querySelectorAll(".dg-tailbtn").forEach(b=>{const pr=(b.dataset.book||"").split("|");if(pr[1]!==td)return;const tm=toMinutes(pr[2]);if(tm==null)return;if(nzf(tm)>=nowN)return;const row=b.closest(".dg-row");const rh=row?Number(row.dataset.h):null;if(rh!=null&&nowN>=rh+60){b.remove();return}const mm=nowN%1440;const tl=String(Math.floor(mm/60)).padStart(2,"0")+":"+String(mm%60).padStart(2,"0");b.dataset.book=pr[0]+"|"+pr[1]+"|"+tl;b.textContent="＋"+tl;});}
+function updateTimers(){moveNowLine();document.querySelectorAll(".tmr[data-since]").forEach(el=>{const t=tsToMs(el.dataset.since);if(isNaN(t))return;const secs=(Date.now()-t)/1000;el.textContent=fmtDur(secs);const plan=Number(el.dataset.plan||0);const p=el.closest(".prog");if(p&&plan>0)p.classList.toggle("overrun",secs/60>plan)})}
+// ── 新单提醒:提示音 + 震动 + 桌面通知(偏好存本设备)──
+const ALERT_KEYS={sound:"dispatch_alert_sound",vibrate:"dispatch_alert_vibrate",notify:"dispatch_alert_notify"};
+function alertPref(k){const v=localStorage.getItem(ALERT_KEYS[k]);return v===null?(k!=="notify"):(v==="1")}
+function setAlertPref(k,on){localStorage.setItem(ALERT_KEYS[k],on?"1":"0")}
+let _ac=null;
+function audioCtx(){if(!_ac){try{_ac=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}return _ac}
+function unlockAudio(){const c=audioCtx();if(c&&c.state==="suspended")c.resume().catch(()=>{})}
+function beep(){const c=audioCtx();if(!c)return;const t=c.currentTime;[[880,0],[1174.7,0.17]].forEach(([f,dt])=>{const o=c.createOscillator(),g=c.createGain();o.type="sine";o.frequency.value=f;o.connect(g);g.connect(c.destination);const s=t+dt;g.gain.setValueAtTime(0.0001,s);g.gain.exponentialRampToValueAtTime(0.35,s+0.02);g.gain.exponentialRampToValueAtTime(0.0001,s+0.26);o.start(s);o.stop(s+0.28)})}
+function fireAlert(title,body){if(alertPref("sound")){unlockAudio();beep()}if(alertPref("vibrate")&&navigator.vibrate){try{navigator.vibrate([200,100,200])}catch(e){}}if(alertPref("notify")&&"Notification"in window&&Notification.permission==="granted"){try{new Notification(title,{body,tag:"dispatch-order",renotify:true})}catch(e){}}}
+function detectNewOrders(silent){const cur=new Map((state.orders||[]).map(o=>[o.id,{status:o.status,assignee:o.assignee_id}]));const prevMap=lastOrders;lastOrders=cur;if(!silent||prevMap===null)return;for(const o of(state.orders||[])){const prev=prevMap.get(o.id);const mine=o.assignee_id===me.open_id;let ring=false;if(!prev){if(me.role==="staff")ring=(o.status==="wait"||mine);else if(me.role==="admin")ring=(o.status==="wait")}else if(me.role==="staff"&&mine&&prev.assignee!==me.open_id)ring=true;if(ring){fireAlert("新工单来了",`${o.team} · ${esc(o.room||"")} · ${o.task_type}`);break}}}
+function requestNotify(){if(!("Notification"in window))return showToast("此浏览器不支持通知");Notification.requestPermission().then(p=>{showToast(p==="granted"?"桌面通知已开启":"未授权通知");if(p==="granted")setAlertPref("notify",true)})}
+function openAlertSettings(){const row=(k,label,desc)=>`<label class="alert-row"><div><strong>${label}</strong><span>${desc}</span></div><span class="switch"><input type="checkbox" data-ak="${k}" ${alertPref(k)?"checked":""}><i></i></span></label>`;const nstate=("Notification"in window)?(Notification.permission==="granted"?"已允许":(Notification.permission==="denied"?"已被浏览器拒绝，请在浏览器设置里开启":"需点下方按钮授权")):"此浏览器不支持";const mask=document.createElement("div");mask.className="modal-mask";mask.innerHTML=`<div class="modal"><div class="modal-head"><strong>${icon("bell",true)} 提醒设置</strong><button class="icon-btn" data-close>${icon("x")}</button></div><div class="alert-set">${row("sound","新单提示音","来新工单时播放提示音")}${row("vibrate","震动提醒","手机端来单时震动")}${row("notify","桌面/系统通知",`切到后台也弹通知（${nstate}）`)}<div class="alert-actions"><button class="text-btn" data-test>${icon("volume-2",true)}测试提示音</button><button class="text-btn amber" data-perm>${icon("bell",true)}允许通知</button></div><p class="alert-hint">设置只对本设备生效。关着网页时仍会收到飞书私信推送。</p></div></div>`;mask.onclick=e=>{if(e.target===mask||e.target.closest("[data-close]"))mask.remove()};document.body.appendChild(mask);drawIcons();mask.querySelectorAll("[data-ak]").forEach(cb=>cb.onchange=()=>{setAlertPref(cb.dataset.ak,cb.checked);if(cb.checked){unlockAudio();if(cb.dataset.ak==="notify")requestNotify()}});mask.querySelector("[data-test]").onclick=()=>{unlockAudio();fireAlert("测试提醒","这是一条测试提示音")};mask.querySelector("[data-perm]").onclick=()=>requestNotify()}
+// ── 班次 / 在岗 / 时间轴（轴：09:00 → 次日 03:00，共 18 小时）──
+const TL_START=9*60,TL_END=27*60,TL_SPAN=TL_END-TL_START;
+function tlNorm(m){return m<TL_START?m+1440:m}
+function tlPos(m){return Math.max(0,Math.min(100,(tlNorm(m)-TL_START)/TL_SPAN*100))}
+function tlBand(startM,endM){if(startM===null||endM===null)return null;let s=tlNorm(startM),e=tlNorm(endM);if(e<=s)e+=1440;const L=Math.max(TL_START,s),R=Math.min(TL_END,e);if(R<=L)return null;return {left:(L-TL_START)/TL_SPAN*100,width:(R-L)/TL_SPAN*100}}
+function shiftByName(name){return (state.shifts||[]).find(s=>s.name===name)}
+function shiftIndex(name){return (state.shifts||[]).findIndex(s=>s.name===name)}
+function shiftActive(shift,nowM){if(!shift)return false;const a=toMinutes(shift.start),b=toMinutes(shift.end);if(a===null||b===null)return false;return b>a?(nowM>=a&&nowM<b):(nowM>=a||nowM<b)}
+function onLeave(p){return p&&p.leave_until&&p.leave_until>=todayStr()}
+function inShift(p){return shiftActive(shiftByName(p.shift),nowMinutes())}
+function personAvail(p){if(!p)return{label:"下班",cls:"s-off",onDuty:false,assignable:false};if(p.intern)return{label:"实习",cls:"s-off",onDuty:false,assignable:false};if(onLeave(p))return{label:"请假",cls:"s-rest",onDuty:false,assignable:false};if(!inShift(p))return{label:"下班",cls:"s-off",onDuty:false,assignable:false};if(p.status==="rest")return{label:"小休",cls:"s-rest",onDuty:true,assignable:false};if(p.status==="busy"||p.status==="check"||p.task)return{label:"忙碌",cls:"s-busy",onDuty:true,assignable:false};return{label:"空闲",cls:"s-free",onDuty:true,assignable:true}}
+function isOnDuty(person){return personAvail(person).onDuty}
+function assignable(person){return personAvail(person).assignable}
+// ── 可派性:能否把某单指派给某人(实习/请假/不在班 一律不可派) ──
+function shiftCovers(shiftName,arrive){const t=toMinutes(arrive);if(t==null)return true;const s=shiftByName(shiftName);if(!s)return true;const a=toMinutes(s.start),b=toMinutes(s.end);if(a==null||b==null)return true;return b>a?(t>=a&&t<b):(t>=a||t<b)}
+function assignBlock(p,dateStr,arrive){if(!p)return"无此人";if(p.role==="team")return p.name+" 是下单方";if(p.intern)return p.name+" 实习不可派";if(p.leave_until&&dateStr&&p.leave_until>=dateStr)return p.name+" 当天请假";if(!shiftCovers(p.shift,arrive))return p.name+" 该时段下班";return null}
+function canAssign(p,dateStr,arrive){return !assignBlock(p,dateStr,arrive)}
+function firstTime(v){const m=/(\d{1,2}):(\d{2})/.exec(v||"");return m?`${m[1].padStart(2,"0")}:${m[2]}`:""}
+function reqArrive(){const sel=document.getElementById("requestTeam");const t=state.teams.find(x=>x.name===(sel&&sel.value))||state.teams[0];if(reqWhen==="now"){const d=new Date();return{date:todayStr(),arrive:`${pad2d(d.getHours())}:${pad2d(d.getMinutes())}`}}if(reqWhen==="book")return{date:reqDate||todayStr(),arrive:reqAt||"18:00"};return{date:todayStr(),arrive:""}}
+function reqAssigneeOptions(selected=""){const t=reqArrive();const nowMode=reqWhen==="now";const opts=staffForGroup(reqGroup).filter(p=>canAssign(p,t.date,t.arrive));return '<option value="">暂不指派 · 进待派队列</option>'+opts.map(p=>{const tag=nowMode?personAvail(p).label:(p.shift||"未排班");return `<option value="${esc(p.open_id)}" ${p.open_id===selected?"selected":""}>${esc(p.name)} · ${esc(tag)}</option>`}).join("")}
+function refreshReqAssignee(){const as=document.getElementById("requestAssignee");if(as)as.innerHTML=reqAssigneeOptions(as.value)}
+function onDuty(person,nowM){return shiftActive(shiftByName(person.shift),nowM)}
+function onDutyCount(){const g=scopeGroup();return (g?staffForGroup(g):(state.staff||[])).filter(isOnDuty).length}
+function availTag(p){const a=personAvail(p);return `<span class="tag ${a.cls}"><span class="status-dot"></span>${a.label}</span>`}
+const SHIFT_TINT=["255,159,10","10,132,255","94,92,230","52,199,89","255,55,95","50,173,230"];
+function shiftColor(i){return SHIFT_TINT[((i%SHIFT_TINT.length)+SHIFT_TINT.length)%SHIFT_TINT.length]}
+
+function confirmBox(msg,okLabel="确定",danger=false){return new Promise(res=>{const m=document.createElement("div");m.className="modal-mask cfm-mask";m.innerHTML=`<div class="cfm"><p>${esc(msg)}</p><div class="cfm-btns"><button class="cfm-cancel">取消</button><button class="cfm-ok ${danger?"danger":""}">${esc(okLabel)}</button></div></div>`;const done=v=>{m.remove();res(v)};m.onclick=e=>{if(e.target===m)done(false)};m.querySelector(".cfm-cancel").onclick=()=>done(false);m.querySelector(".cfm-ok").onclick=()=>done(true);document.body.appendChild(m);setTimeout(()=>m.querySelector(".cfm-ok").focus(),30)})}
+function promptBox(title,placeholder,required=true){return new Promise(res=>{const m=document.createElement("div");m.className="modal-mask cfm-mask";m.innerHTML=`<div class="cfm"><p>${esc(title)}</p><textarea class="cfm-ta" rows="3" placeholder="${esc(placeholder||"")}"></textarea><div class="cfm-btns"><button class="cfm-cancel">取消</button><button class="cfm-ok">确定</button></div></div>`;const ta=m.querySelector(".cfm-ta");const done=v=>{m.remove();res(v)};m.onclick=e=>{if(e.target===m)done(null)};m.querySelector(".cfm-cancel").onclick=()=>done(null);m.querySelector(".cfm-ok").onclick=()=>{const v=(ta.value||"").trim();if(required&&!v){ta.classList.add("err");ta.focus();return}done(v)};document.body.appendChild(m);setTimeout(()=>ta.focus(),30)})}
+async function completeOrder(oid,after){const note=await promptBox("完成说明（必填）：这单做了什么 / 处理结果","例如：已重新对光并调整场景亮度，主播确认没问题");if(note===null)return;try{await apiPost("complete",{order_id:Number(oid),note});showToast("任务已完成");if(after)after();load()}catch(e){}}
+async function apiPost(path,body){const response=await fetch(`/api/${path}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})});const result=await response.json().catch(()=>({ok:false,msg:"服务响应异常"}));if(!result.ok){showToast(result.msg||"操作失败");throw new Error(result.msg||"操作失败")}return result}
+async function load(silent=false){try{const response=await fetch("/api/app-state");const result=await response.json();srvVer=result.server_version||(result.data&&result.data.server_version)||"";if(!result.authenticated){configured=result.configured!==false;testMode=Boolean(result.test_mode);state=null;me=null;renderLogin();return}state=result.data;me=state.me;if(me&&Number(me.approved)===0&&me.role!=="admin"){renderWaiting();return}const __fp=JSON.stringify(result.data);detectNewOrders(silent);const pages=navFor(navKey());if(!pages.some(item=>item.id===page))page=pages[0].id;if(silent){const ae=document.activeElement?.tagName;if(["INPUT","SELECT","TEXTAREA"].includes(ae))return;if(page==="settings")return;const noteEl=document.getElementById("requestNote");const audEl=document.getElementById("requestAudio"),vidEl=document.getElementById("requestVideo");if((noteEl&&noteEl.value.trim())||(fileEl&&fileEl.files&&fileEl.files.length))return;if([...document.querySelectorAll('input[id^="new"]')].some(i=>i.value.trim()))return;if(__fp===window.__stateFp)return}window.__stateFp=__fp;renderApp()}catch(error){if(!silent)showToast("无法连接调度服务")}}
+
+function renderLogin(){const action=testMode?`<div class="test-roles"><button class="test-role" data-profile="team">团队端</button><button class="test-role" data-profile="staff">灯光师端</button><button class="test-role" data-profile="admin">管理端</button></div>`:configured?`<button class="primary full" id="feishuLogin">${icon("log-in")}使用飞书登录</button>`:`<button class="primary full" disabled>等待飞书配置</button>`;document.getElementById("app").innerHTML=`<main class="login"><section class="login-panel"><span class="app-icon">${icon("lamp-ceiling")}</span><h1>团播派工</h1><p class="login-copy">${testMode?"测试模式，数据写入独立测试库":"团播团播派工与派工"}</p>${action}<div class="login-foot">内部系统 · 仅限公司网络访问<br>页面 ${APP_VERSION}${srvVer?` · 服务 ${esc(srvVer)}`:""}${srvVer&&srvVer!==APP_VERSION?`<br><b style="color:#ff9f0a">⚠ 版本不一致,服务端需要重启</b>`:""}</div></section></main>`;drawIcons();document.querySelectorAll("[data-profile]").forEach(button=>button.onclick=async()=>{const response=await fetch("/auth/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({profile:button.dataset.profile})});const result=await response.json();if(result.ok)load();else showToast(result.msg||"登录失败")});const login=document.getElementById("feishuLogin");if(login)login.onclick=()=>location.href="/auth/start"}
+
+function renderWaiting(){document.getElementById("app").innerHTML=`<main class="login"><section class="login-panel"><span class="app-icon">${icon("shield-check")}</span><h1>等待管理员审核</h1><p class="login-copy">你已用飞书登录(${esc(me.name)}),当前系统开启了人工审核。<br>请联系管理员在「人员」页点「通过审核」放行。</p><button class="text-btn" id="waitLogout" style="margin-top:14px">退出登录</button></section></main>`;drawIcons();const b=document.getElementById("waitLogout");if(b)b.onclick=()=>location.href="/logout"}
+function renderApp(){if(me&&(me.role==="admin"||me.role==="team")){const gs=myGroups();if(gs.length&&!gs.includes(boardGrp))boardGrp=gs[0];}const nav=navFor(navKey());const title=nav.find(item=>item.id===page)?.label||"团播派工";const currentTime=(()=>{const n=new Date();return `${pad2d(n.getMonth()+1)}-${pad2d(n.getDate())} ${weekdayLabel(ymd(n))} ${pad2d(n.getHours())}:${pad2d(n.getMinutes())}`})();const navHtml=nav.map(item=>`<button class="nav-btn ${item.id===page?"active":""}" data-page="${item.id}">${icon(item.icon)}<span>${item.label}</span></button>`).join("");const bootstrap=state.bootstrap_open&&me.role!=="admin"?`<div class="bootstrap">${icon("shield-check")}<strong>管理员初始化</strong><input id="bootstrapCode" maxlength="6" inputmode="numeric" placeholder="6 位引导码"><button class="text-btn amber" id="claimAdmin">认领</button></div>`:"";document.getElementById("app").innerHTML=`<div class="app-shell"><aside class="side"><div class="side-brand"><span class="app-icon">${icon("lamp-ceiling")}</span><strong>团播派工</strong></div><nav class="nav">${navHtml}</nav><div class="side-bottom"><div class="connection"><span class="live-dot"></span>${state.test_mode?"测试库在线":"服务在线"} · ${APP_VERSION}</div><div class="user-row" id="logout">${avatar(me)}<div class="user-meta"><strong>${esc(me.name)}</strong><span>${ROLE_LABEL[me.role]||me.role}</span></div>${icon("log-out",true)}</div></div></aside><main class="main">${(()=>{const tbTabs=page==="overview"||page==="dispatch"||page==="crew"||page==="crewboard"?groupTabsHtml():page==="request"?reqGroupTabs():page==="stats"?statsGrpTabs():page==="settings"?cfgSecTabs(false):"";window.__tbTabs=tbTabs;return ""})()}<header class="topbar${window.__tbTabs?" has-tabs":""}"><div class="page-title"><h1>${title}</h1></div>${window.__tbTabs?`<div class="tb-tabs">${window.__tbTabs}</div>`:""}<div class="top-actions"><span class="duty-pill" title="当前在岗人数（状态不为“下班”的灯光师）"><span class="live-dot"></span>在岗 <b>${onDutyCount()}</b></span><span class="clock">${currentTime}</span><button class="icon-btn" id="alertBtn" title="提醒设置（声音/震动/通知）">${icon("bell")}</button><button class="icon-btn" id="themeToggle" title="${THEME_META[themePref].label}">${icon(THEME_META[themePref].icon)}</button><button class="icon-btn" id="refresh" title="刷新">${icon("refresh-cw")}</button></div></header><div class="workspace ${page==="overview"||page==="dispatch"?"ws-wide":"ws-narrow"}${page==="overview"?" ws-dash":""}">${srvVer&&srvVer!==APP_VERSION?`<div class="banner warn">⚠ 前后端版本不一致：页面 ${APP_VERSION} / 服务 ${esc(srvVer)}——服务端还在跑旧代码，请在服务器上重启 server.py（用部署包里的「重启服务」脚本）后刷新</div>`:""}${state.test_mode?'<div class="banner info">测试模式，当前操作不会写入正式数据库</div>':""}${bootstrap}<div id="view">${renderPage()}</div></div></main><nav class="mobile-nav" style="--mobile-count:${nav.length}">${navHtml}</nav></div>`;bindShell();drawIcons();ensureTimerTick();updateTimers();setTimeout(()=>{const c=document.querySelector(".tb-tabs .filters")||document.querySelector(".tb-tabs");const a=c&&c.querySelector(".filter.active");if(c&&a&&c.scrollWidth>c.clientWidth+2){const cr=c.getBoundingClientRect(),ar=a.getBoundingClientRect();c.style.scrollBehavior="auto";c.scrollLeft+=ar.left-cr.left-(cr.width-ar.width)/2}},60);if(document.querySelector(".dg-wrap")){bindFit();requestAnimationFrame(fitSchedule);setTimeout(fitSchedule,160)}}
+function fitSchedule(){const wrap=document.querySelector(".dg-wrap");if(!wrap)return;const dg=wrap.querySelector(".dg");if(!dg)return;if(dg.classList.contains("rg")){const tr=dg.querySelector(".rg-today");if(tr&&wrap.scrollHeight>wrap.clientHeight)wrap.scrollTop=Math.max(0,tr.offsetTop-wrap.clientHeight/2);return}const rows=dg.querySelectorAll(".dg-row:not(.dg-head):not(.dg-end)").length||1;const mobile=window.innerWidth<=900;const headH=dg.querySelector(".dg-head")?.offsetHeight||34;const endH=dg.querySelector(".dg-end")?.offsetHeight||0;let avail=wrap.clientHeight-headH-endH-2;if(avail<rows*14){const ws=wrap.closest(".workspace")||document.body;const offsetInWs=wrap.getBoundingClientRect().top-ws.getBoundingClientRect().top;avail=window.innerHeight-(mobile?50:56)-offsetInWs-(mobile?70:14)-headH-endH-10}const minRow=mobile?18:21,maxRow=56;let rowH=Math.floor((avail-rows)/rows);rowH=Math.max(minRow,Math.min(maxRow,rowH));dg.style.setProperty("--dgrow",rowH+"px");dg.classList.toggle("dense",rowH<27);requestAnimationFrame(()=>{if(wrap.scrollHeight>wrap.clientHeight+2)dg.classList.add("dense")})}
+let _fitBound=false;function bindFit(){if(_fitBound)return;_fitBound=true;window.addEventListener("resize",()=>{clearTimeout(window._fitT);window._fitT=setTimeout(fitSchedule,120)})}
+function renderPage(){if(me.role==="admin")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="crew"?adminCrew():page==="stats"?adminStats():page==="settings"?adminSettings():adminAudit();if(navKey()==="lead")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="work"?staffWork():page==="crew"?adminCrew():page==="audit"?adminAudit():adminStats();if(me.role==="staff")return page==="work"?staffWork():page==="open"?openOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard();return page==="request"?teamRequest():page==="orders"?teamOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard()}
+
+function staffOptions(selected="",grp="",order=null){const dateStr=order?(order.date||todayStr()):todayStr();const arrive=order?(order.arrive||""):"";const future=dateStr!==todayStr();const list=(grp?staffForGroup(grp):(state.staff||[])).filter(p=>canAssign(p,dateStr,arrive));return list.map(person=>{const tag=future?(person.shift||"未排班"):personAvail(person).label;return `<option value="${esc(person.open_id)}" ${person.open_id===selected?"selected":""}>${esc(person.name)} · ${esc(tag)}</option>`}).join("")||'<option value="">该时段本组无可派成员</option>'}
+function hhmm(ts){const t=tsToMs(ts);return isNaN(t)?"--:--":new Date(t).toTimeString().slice(0,5)}
+function minsBetween(a,b){const x=tsToMs(a),y=tsToMs(b);if(isNaN(x)||isNaN(y))return null;const d=(y-x)/60000;return d>=0?d:null}
+function legTxt(m){return m==null?"":m<60?`${Math.round(m)} 分钟`:`${Math.floor(m/60)} 小时 ${Math.round(m%60)} 分`}
+function orderTimelineHtml(o){const st=[["下单",o.created_at,"send"],["接单",o.accepted_at,"hand"],["开始",o.started_at,"play"],["完成",o.done_at,"check"]];const resp=minsBetween(o.created_at,o.accepted_at),work=minsBetween(o.started_at,o.done_at),total=minsBetween(o.created_at,o.done_at);return `<div class="tl-steps">${st.map(([label,ts])=>{const ok=!isNaN(tsToMs(ts));return `<div class="tl-step ${ok?"done":""}"><span class="tl-node"></span><div class="tl-txt"><strong>${label}</strong><span class="mono">${ok?hhmm(ts):"—"}</span></div></div>`}).join("")}</div><dl class="mini-dl">${resp!=null?`<dt>响应（下单→接单）</dt><dd>${legTxt(resp)}</dd>`:""}${work!=null?`<dt>作业（开始→完成）</dt><dd>${legTxt(work)}</dd>`:""}${total!=null?`<dt>总时长（下单→完成）</dt><dd>${legTxt(total)}</dd>`:""}</dl>`}
+function orderExtra(order){const kind=order.media_kind||"audio";const marks=(order.note?icon("message-square-text",true):"")+(order.media?icon(kind==="video"?"video":"volume-2",true):"")+(order.media2?icon(order.media2_kind==="video"?"video":"volume-2",true):"");return `<button class="order-extra" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(kind)}" data-team="${esc(order.team)}">${marks}${icon("clock-3",true)}<span>进度</span></button>`}
+function showDetail(el){const oid=Number(el.dataset.oid),o=(state.orders||[]).find(x=>x.id===oid)||{};const media=el.dataset.media,kind=el.dataset.kind||"audio",note=el.dataset.note,team=el.dataset.team;const mkPlayer=(m,k,auto)=>!m?"":(k==="video"?`<video src="${esc(m)}" controls ${auto?"autoplay ":""}playsinline style="width:100%;max-height:48vh;border-radius:10px;background:#000"></video>`:`<audio src="${esc(m)}" controls ${auto?"autoplay ":""}style="width:100%"></audio>`);const m1=o.media||media,k1=o.media_kind||kind||"audio",m2=o.media2||"",k2=o.media2_kind||"video";const player=mkPlayer(m1,k1,true),player2=mkPlayer(m2,k2,false);const canManage=o.id&&o.status!=="done"&&(me.role==="admin"||(me.lead&&me.grp===o.grp));let manage="";if(canManage){const reassign=`<div class="dm-row"><select id="dmReassign"><option value="">— 撤回到待派工 —</option>${staffOptions(o.assignee_id||"",o.grp,o)}</select><button class="text-btn amber" id="dmReassignBtn">${icon("send",true)}改派</button></div>`;const edit=o.status==="wait"?`<div class="dm-row"><select id="dmTask">${slaForGroup(o.grp).map(s=>`<option ${s.task_type===o.task_type?"selected":""}>${esc(s.task_type)}</option>`).join("")}</select><label class="dm-urg"><span class="switch"><input type="checkbox" id="dmUrgent" ${o.urgent?"checked":""}><i></i></span>紧急</label><button class="text-btn" id="dmSaveBtn">${icon("check",true)}保存</button></div>`:"";const complete=o.status==="working"?`<button class="text-btn" id="dmCompleteBtn">${icon("check",true)}标记完成</button>`:"";manage=`<div class="dm"><div class="section-label" style="margin-top:16px">管理工单</div>${reassign}${edit}<div class="dm-foot">${complete}<button class="text-btn danger" id="dmCancelBtn">${icon("trash-2",true)}取消工单</button></div></div>`;}const wrap=document.createElement("div");wrap.className="modal-mask";wrap.innerHTML=`<div class="modal"><div class="modal-head"><strong>${esc(team||"工单")}${o.grp?" · "+esc(o.grp):""}</strong><button class="icon-btn" data-close>${icon("x")}</button></div>${o.creator_name?`<p class="dim" style="margin:2px 0 0;font-size:11px">下单人:${esc(o.creator_name)}${o.created_at?` · ${esc(String(o.created_at).slice(5,16))}`:""}${o.assignee_name?` · 负责:${esc(o.assignee_name)}`:""}</p>`:""}${o.id?orderTimelineHtml(o):""}${note?`<div class="section-label" style="margin-top:14px">备注说明</div><p class="modal-note">${esc(note)}</p>`:""}${o.done_note?`<div class="section-label" style="margin-top:14px">完成说明</div><p class="modal-note">${esc(o.done_note)}</p>`:""}${player?`<div class="section-label" style="margin:14px 0 8px">${k1==="video"?"视频":"语音"}说明</div>`+player:""}${player2?`<div class="section-label" style="margin:14px 0 8px">${k2==="video"?"视频":"语音"}${player?"（第2个附件）":"说明"}</div>`+player2:""}${manage}</div>`;wrap.onclick=e=>{if(e.target===wrap||e.target.closest("[data-close]"))wrap.remove()};document.body.appendChild(wrap);drawIcons();const rb=wrap.querySelector("#dmReassignBtn");if(rb)rb.onclick=async()=>{const uid=wrap.querySelector("#dmReassign").value;try{await apiPost("reassign",{order_id:oid,user_id:uid});showToast(uid?"已改派":"已撤回到待派工");wrap.remove();load()}catch(e){}};const sb=wrap.querySelector("#dmSaveBtn");if(sb)sb.onclick=async()=>{try{await apiPost("edit-order",{order_id:oid,task:wrap.querySelector("#dmTask").value,urgent:wrap.querySelector("#dmUrgent").checked?"1":"0"});showToast("工单已更新");wrap.remove();load()}catch(e){}};const mcb=wrap.querySelector("#dmCompleteBtn");if(mcb)mcb.onclick=()=>completeOrder(oid,()=>wrap.remove());const cb=wrap.querySelector("#dmCancelBtn");if(cb)cb.onclick=async()=>{if(!await confirmBox("确定取消这张工单？此操作不可撤销。","取消工单",true))return;try{await apiPost("cancel-order",{order_id:oid});showToast("工单已取消");wrap.remove();load()}catch(e){}};}
+function orderRow(order,mode="view"){let actions="";if(mode==="dispatch"){if(order.status==="wait"){const avail=staffForGroup(order.grp).filter(p=>canAssign(p,order.date||todayStr(),order.arrive));actions=avail.length?`<select data-assignee="${order.id}">${staffOptions("",order.grp,order)}</select><button class="text-btn amber" data-assign="${order.id}">${icon("send",true)}派单</button>`:`<span class="dim" style="font-size:11px;white-space:nowrap">该时段无人可派</span>`;}}else if(mode==="staff"&&order.status==="wait"){actions=`<button class="text-btn amber" data-take="${order.id}">${icon("hand",true)}接单</button>`;}else if(mode==="mine"&&order.status==="working"){actions=order.started_at?`<button class="text-btn amber" data-complete="${order.id}">${icon("check",true)}完成</button>`:`<button class="text-btn amber" data-start="${order.id}">${icon("play",true)}开始任务</button>`;}return `<div class="order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong><span>${order.urgent?"紧急·尽快":isOverdue(order)?"已逾期":(orderDayLabel(order)?orderDayLabel(order)+"到岗":"到岗时间")}</span></div><div class="order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span>${esc(order.room)} · ${esc(order.task_type)}</span><div class="order-meta">${order.grp?groupChip(order.grp):""}${orderProgress(order)}${orderExtra(order)}</div></div><div class="order-detail"><strong>${esc(order.assignee_name)||"未指派"}</strong><span>预计 ${order.minutes} 分钟 · 基准 ${esc(order.base_time)}</span></div><div>${orderTag(order)}</div><div class="order-actions">${actions}</div></div>`}
+function ordersPanel(orders,mode,title="工单队列",subtitle=""){return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:""}</div><span class="tag">${orders.length} 张</span></div><div class="order-list">${orders.map(item=>orderRow(item,mode)).join("")||`<div class="order-empty">${icon("check-circle",true)}暂无待派工单</div>`}</div></section>`}
+
+function dayGantt(dateStr){
+  const isToday=dateStr===todayStr();
+  const nz=m=>m==null?null:(m<300?m+1440:m);
+  const grp=boardGrp||scopeGroup()||(myGroups()[0]||"");
+  const members=(state.staff||[]).filter(p=>(p.grp||"")===grp&&!p.intern);
+  if(!members.length)return empty("calendar","本组暂无人员");
+  const dayOrders=state.orders.filter(o=>o.date===dateStr&&o.status!=="cancelled"&&o.grp===grp&&toMinutes(o.arrive)!=null);
+  const nowN=isToday?nz(nowMinutes()):null;
+  const shiftRange=p=>{const s=shiftByName(p.shift);if(!s)return null;let a=nz(toMinutes(s.start)),b=nz(toMinutes(s.end));if(a==null||b==null)return null;if(b<=a)b+=1440;return[a,b];};
+  let lo=Infinity,hi=-Infinity;
+  members.forEach(p=>{const sr=shiftRange(p);if(sr){lo=Math.min(lo,sr[0]);hi=Math.max(hi,sr[1]);}});
+  dayOrders.forEach(o=>{const a=nz(toMinutes(o.arrive));lo=Math.min(lo,a);hi=Math.max(hi,a+Math.max(o.minutes||30,15));});
+  if(!isFinite(lo)){lo=540;hi=1620;}
+  lo=Math.floor(lo/60)*60;hi=Math.ceil(hi/60)*60;lo=Math.max(300,lo);hi=Math.min(1680,hi);
+  if(hi-lo<300)hi=lo+300;
+  const H=[];for(let h=lo;h<hi;h+=60)H.push(h);
+  const span=hi-lo;const pct=m=>Math.max(0,Math.min(100,((m-lo)/span)*100));const minFoot=Math.max(50,Math.round(span*0.16));
+  const hourLbl=h=>String(Math.floor((h/60)%24)).padStart(2,"0");
+  const sortM=arr=>[...arr].sort((a,b)=>(b.lead?1:0)-(a.lead?1:0)||String(a.name).localeCompare(String(b.name)));
+  const mem=sortM(members);
+  const pOrders={};mem.forEach(p=>{pOrders[p.open_id]=dayOrders.filter(o=>o.assignee_id===p.open_id).map(o=>{const a=nz(toMinutes(o.arrive));let b=a+Math.max(o.minutes||30,15);if(o.status==="done"&&o.done_at){const dmr=toMinutes(String(o.done_at).slice(11,16));if(dmr!=null){const dm=nz(dmr);if(dm>a&&dm<b)b=Math.max(a+5,dm);}}return{o,a,b};});});
+  const fmtHM2=m=>String(Math.floor((m%1440)/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");const jobHtml=(x,st,h)=>{const o=x.o;const done=o.status==="done";const endS=fmtHM2(x.b!=null?x.b:toMinutes(o.arrive)+Math.max(o.minutes||30,15));const rm=o.room?String(o.room):o.team;const endsHere=x.b<=h+60;const shape=st?(endsHere?"solo":"st"):(endsHere?"ends":"mid");return `<div class="dg-job ${shape} ${done?'done':''}" style="--gc:${groupColor(grp)}" data-detail="1" data-oid="${o.id}" data-note="${esc(o.note||"")}" data-media="${esc(o.media||"")}" data-kind="${esc(o.media_kind||"audio")}" data-team="${esc(o.team)}" title="${esc(o.arrive)}–${endS} · ${esc(rm)} · ${esc(o.team)} · ${esc(o.task_type)}${done?' · 已完成':''}">${st?`<b>${esc(rm)}</b><span>${esc(o.arrive)}–${endS} ${esc(o.task_type)}</span>`:""}</div>`;};
+  const canQ=me.role==="admin"||me.lead;
+  const fmtHM3=m=>String(Math.floor((m%1440)/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");const cell=(p,h)=>{const sr=shiftRange(p);const on=sr&&sr[0]<h+60&&sr[1]>h;const cov=(pOrders[p.open_id]||[]).filter(x=>x.a<h+60&&x.b>h);if(cov.length){let tail="";if(canQ&&on&&dateStr>=todayStr()){let ts=Math.max(h,Math.max(...cov.map(x=>Math.min(x.b,h+60))));if(isToday&&nowN!=null&&ts<nowN)ts=nowN;if(ts<h+60&&sr&&sr[1]-ts>=10&&(ts%60)!==0){const tl=fmtHM3(ts);tail=`<button class="dg-tailbtn" data-book="${esc(p.open_id)}|${dateStr}|${tl}|${fmtHM3(sr[1])}" title="从 ${tl} 起可约(至 ${fmtHM3(sr[1])} 下班)">＋${tl}</button>`;}}return `<div class="dg-cell cov${cov.length>1?' clash':''}">${cov.map(x=>jobHtml(x,x.a>=h&&x.a<h+60,h)).join("")}${tail}</div>`;}const cls=(p.intern||onLeave(p)||!on)?"dg-off":"dg-free";const bookable=cls==="dg-free"&&canQ&&dateStr>=todayStr()&&(!isToday||h+60>nowN);if(bookable)return `<button class="dg-cell can" data-book="${esc(p.open_id)}|${dateStr}|${hourLbl(h)}:00|${fmtHM3(sr[1])}" title="给 ${esc(p.name)} 预约 ${hourLbl(h)}:00 的活"><i class="dg-free"></i><em class="dg-plus">＋</em></button>`;return `<div class="dg-cell"><div class="${cls}"></div></div>`;};
+  const head=`<div class="dg-row dg-head"><div class="dg-time">时段</div>${mem.map(p=>{const av=personAvail(p);const sr2=shiftRange(p);const sh=sr2?((sr2[0]%60===0&&sr2[1]%60===0)?`${Math.floor(sr2[0]/60)%24}-${Math.floor(sr2[1]/60)%24}点班`:`${fmtHM3(sr2[0])}-${fmtHM3(sr2[1])}班`):"未排班";const inner=`<span class="dg-mline"><span class="status-dot ${av.cls}"></span><span class="nm">${esc(p.name)}</span></span><em class="dg-sh">${sh}</em>`;return canQ?`<button class="dg-mem can" data-quick="${esc(p.open_id)}" title="点击给 ${esc(p.name)} 派单 · 班次 ${sh}">${inner}</button>`:`<div class="dg-mem" title="班次 ${sh}">${inner}</div>`;}).join("")}</div>`;
+  const body=H.map(h=>{const nc=(isToday&&nowN!=null&&nowN>=h&&nowN<h+60)?" now":"";const pc=(isToday&&nowN!=null&&h+60<=nowN)?" pastrow":"";return `<div class="dg-row${nc}${pc}" data-h="${h}"><div class="dg-time">${hourLbl(h)}:00</div>${mem.map(p=>cell(p,h)).join("")}</div>`;}).join("");
+  const pending=dayOrders.filter(o=>!o.assignee_id);
+  const pendBar=pending.length?`<div class="dg-pend">${icon("alert-circle",true)}<b>待派工 ${pending.length} 单</b>${pending.slice(0,8).map(o=>`<button class="dg-pchip" style="--gc:${groupColor(grp)}" data-detail="1" data-oid="${o.id}" data-note="${esc(o.note||"")}" data-media="${esc(o.media||"")}" data-kind="${esc(o.media_kind||"audio")}" data-team="${esc(o.team)}"><b>${esc(o.arrive||"--")}</b> ${o.room?esc(o.room):esc(o.team)}·${esc(o.task_type)}</button>`).join("")}${pending.length>8?` <span class="dim">+${pending.length-8}</span>`:""}</div>`:"";
+  const legend=`<div class="ag-legend"><span><i class="lf"></i>有空可约</span><span><i style="background:${groupColor(grp)};display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px"></i>已排的单(点开可改派/完成)</span><span><i class="lo"></i>下班/不可派</span>${isToday?`<span><i class="lb"></i>当前时间线 · 线上方为已过(变灰)</span>`:""}</div>`;
+  const endRow=`<div class="dg-row dg-end"><div class="dg-time">${hourLbl(hi)}:00</div><div class="dg-endlab">最晚下班线 ${hourLbl(hi)}:00 · 上面 ${hourLbl(hi-60)}:00 那格可约到这条线 · 各人下班时间见列头</div></div>`;
+  return `${pendBar}<div class="dg-wrap"><div class="dg" data-today="${isToday?1:0}" style="--mem:${mem.length}">${head}${body}${endRow}</div></div>${legend}`;
+}
+function loadSchedule(){if(schedLoading)return;schedLoading=true;fetch(`/api/schedule?range=${schedView}`).then(r=>r.json()).then(res=>{schedLoading=false;if(res.ok){schedData=res.data;if(page==="overview")renderApp()}}).catch(()=>{schedLoading=false})}
+function dateAdd(base,n){const d=new Date(base+"T00:00:00");d.setDate(d.getDate()+n);return ymd(d)}
+function rangeGrid(d,dayList){const grp=boardGrp||scopeGroup()||(myGroups()[0])||"";
+const members=(state.staff||[]).filter(p=>(p.grp||"")===grp&&!p.intern);
+if(!members.length)return empty("calendar","本组暂无人员");
+const mem=[...members].sort((a,b)=>(b.lead?1:0)-(a.lead?1:0)||String(a.name).localeCompare(String(b.name)));
+const orders=(d.orders||[]).filter(o=>o.grp===grp&&o.status!=="cancelled");
+const by={};orders.forEach(o=>{(by[o.date]=by[o.date]||[]).push(o)});
+const shiftLbl=p=>{const sh=shiftByName(p.shift);if(!sh)return"未排班";const a=toMinutes(sh.start),b=toMinutes(sh.end);return(a!=null&&b!=null&&a%60===0&&b%60===0)?`${Math.floor(a/60)}-${Math.floor(b/60)}点班`:`${esc(sh.start)}-${esc(sh.end)}班`};
+const head=`<div class="dg-row dg-head"><div class="dg-time">日期</div>${mem.map(p=>{const av=personAvail(p);return `<div class="dg-mem"><span class="dg-mline"><span class="status-dot ${av.cls}"></span><span class="nm">${esc(p.name)}</span></span><em class="dg-sh">${shiftLbl(p)}</em></div>`}).join("")}</div>`;
+const rows=dayList.map(ds=>{const isT=ds===d.today;const past=ds<d.today;const list=(by[ds]||[]);
+const pend=list.filter(o=>!o.assignee_id&&o.status!=="done").length;
+const cells=mem.map(p=>{const mine=list.filter(o=>o.assignee_id===p.open_id).sort((a,b)=>String(a.arrive||"").localeCompare(String(b.arrive||"")));
+if(!mine.length)return `<button class="rg-cell" data-day2="${ds}" title="${esc(p.name)} ${ds} 无排单,点进当天排班图"></button>`;
+const chips=mine.slice(0,2).map(o=>`<span class="rg-chip ${o.status==="done"?"done":""}" style="--gc:${groupColor(grp)}" title="${esc(o.arrive||"")} ${esc(o.room||o.team)} ${esc(o.task_type||"")}${o.status==="done"?" · 已完成":""}">${esc(o.room||o.team)}</span>`).join("");
+return `<button class="rg-cell has" data-day2="${ds}">${chips}${mine.length>2?`<span class="rg-more">+${mine.length-2} 单</span>`:""}</button>`}).join("");
+return `<div class="dg-row rg-row ${isT?"rg-today":""} ${past?"rg-past":""}"><button class="dg-time rg-day" data-day2="${ds}"><b>${isT?"今天":weekdayLabel(ds)}</b><i>${ds.slice(5)}</i>${pend?`<em class="rg-pend">待派${pend}</em>`:""}</button>${cells}</div>`}).join("");
+return `<div class="dg-wrap rg-wrap"><div class="dg rg" style="--mem:${mem.length}">${head}${rows}</div></div><div class="ag-legend"><span><i class="lf"></i>行=日期 · 列=人(和日视图同一套) · 点任意格进当天排班图</span></div>`}
+function weekView(d){const days=[];for(let i=0;i<7;i++)days.push(dateAdd(d.from,i));return rangeGrid(d,days)}
+function monthView(d){const first=new Date(d.from+"T00:00:00");const year=first.getFullYear(),month=first.getMonth();const dim=new Date(year,month+1,0).getDate();const days=[];for(let day=1;day<=dim;day++)days.push(`${year}-${pad2d(month+1)}-${pad2d(day)}`);return rangeGrid(d,days)}
+function fmtDateCn(ds){return `${Number(ds.slice(5,7))}月${Number(ds.slice(8,10))}日 ${weekdayLabel(ds)}`}
+function schedulePanel(){if(!schedDate)schedDate=todayStr();const d0=todayStr(),d1=addDaysStr(1),d2=addDaysStr(2);const isDay=schedView==="day";const custom=isDay&&![d0,d1,d2].includes(schedDate);const segBtn=(v,l,ds)=>`<button class="seg-btn ${(isDay&&ds===schedDate)||(!isDay&&schedView===v)?"active":""}" data-schedview="${v}">${l}</button>`;const seg=`<div class="seg">${segBtn("d0",`今天${Number(d0.slice(8,10))}日`,d0)}${segBtn("d1",`明天${Number(d1.slice(8,10))}日`,d1)}${segBtn("d2",`后天${Number(d2.slice(8,10))}日`,d2)}${custom?`<button class="seg-btn active" data-schedview="d0">${schedDate.slice(5)} ✕</button>`:""}${segBtn("week","本周")}${segBtn("month","本月")}</div>`;const gname=boardGrp||scopeGroup()||(myGroups()[0])||"本组";let body,sub;if(isDay){body=dayGantt(schedDate);const cnt=state.orders.filter(o=>o.date===schedDate&&o.status!=="cancelled"&&o.grp===gname).length;const lbl=schedDate===d0?"今天":schedDate===d1?"明天":schedDate===d2?"后天":"";const crossNight=schedDate===d0&&ymd(new Date())!==d0?"（已过0点,凌晨时段仍属这个排班日）":"";const canQ2=me&&(me.role==="admin"||me.lead);sub=`${lbl?lbl+" ":""}${fmtDateCn(schedDate)}${crossNight} · ${gname} · ${cnt} 单 · ${canQ2?"点绿格约1小时·按住拖动选时段,点人名立即派单":"绿格=有空 · 色块=已排的单,点开看进度"}`;}else{const ready=schedData&&schedData.range===schedView;if(!ready){loadSchedule();body=`<div class="sched-load">${icon("loader-circle")}正在载入排班…</div>`;sub="载入中…";}else{const cnt=(schedData.orders||[]).filter(o=>!boardGrp||o.grp===boardGrp).length;if(schedView==="week"){body=weekView(schedData);sub=`本周 ${schedData.from.slice(5)} – ${schedData.to.slice(5)} · ${gname} ${cnt} 单 · 列=人 行=日期,点格子进当天`;}else{body=monthView(schedData);sub=`本月 · ${gname} ${cnt} 单 · 列=人 行=日期,点格子进当天`;}}}return `<section class="panel tl-panel"><div class="panel-head"><div><h2>排班图</h2><p>${esc(sub)}</p></div>${seg}</div>${body}</section>`}
+function addMinStr(hm,delta){const m=(toMinutes(hm)||0)+delta;const mm=((m%1440)+1440)%1440;return String(Math.floor(mm/60)).padStart(2,"0")+":"+String(mm%60).padStart(2,"0")}
+function nextHourStr(){const m=nowMinutes()+60;const h=Math.floor((m%1440)/60);return String(h).padStart(2,"0")+":00"}
+function weekdayLabel(ds){const d=new Date(ds+"T00:00:00");return "周"+["日","一","二","三","四","五","六"][d.getDay()]}
+function shiftOverviewPanel(gsel){const now=nowMinutes();const rows=(state.shifts||[]).map((s,i)=>{const people=(state.staff||[]).filter(p=>p.shift===s.name&&(!gsel||(p.grp||"")===gsel));const onNow=people.filter(isOnDuty).length;const active=shiftActive(s,now);return `<div class="shift-row ${active?"active":""}"><span class="shift-swatch" style="background:rgb(${shiftColor(i)})"></span><div class="shift-meta"><strong>${esc(s.name)}</strong><span>${esc(s.start)}–${esc(s.end)}</span></div><div class="shift-people">${people.length?people.map(p=>esc(p.name)).join("、"):"<i>未排人</i>"}</div>${active?(onNow?`<span class="tag s-free"><span class="status-dot"></span>在岗${onNow>1?" "+onNow:""}</span>`:'<span class="tag s-busy"><span class="status-dot"></span>空缺</span>'):`<span class="shift-count">${people.length} 人</span>`}</div>`}).join("");return `<section class="panel"><div class="panel-head"><div><h2>班次与人员</h2><p>高亮为当前在岗班次</p></div></div><div class="shift-list">${rows||empty("clock-3","未设置班次")}</div></section>`}
+function crewPanel(title="人员状态"){const st=boardStaff().filter(p=>!p.intern);return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2><p>${st.filter(assignable).length} 人可派</p></div></div><div class="crew-list">${st.map(person=>{const a=personAvail(person);return `<div class="crew-row">${avatar(person)}<div class="crew-name"><strong>${esc(person.name)}${person.lead?' <span class="lead-tag">组长</span>':""}</strong><span>${esc(person.task)||`${esc(person.shift||"未排班")}${person.grp&&!boardGrp?" · "+esc(person.grp):""}`}</span></div><div class="crew-state ${a.cls}"><span class="status-dot"></span>${a.label}</div></div>`}).join("")||empty("users","本组暂无成员")}</div></section>`}
+
+function closeQuick(){const m=document.getElementById("qsheetMask");if(m){const s=m.querySelector(".qsheet");if(s)s.classList.remove("in");setTimeout(()=>{if(m.parentNode)m.remove()},180)}}
+function openQuickOrder(openId,pre){const p=(state.staff||[]).find(x=>x.open_id===openId);const grp=p?p.grp:(boardGrp||scopeGroup()||(myGroups()[0])||"");const teams=state.teams||[];const gsla=slaForGroup(grp);const team0=reqTeam&&teams.some(t=>t.name===reqTeam)?reqTeam:((teams[0]||{}).name||"");const task0=reqTask&&gsla.some(s=>s.task_type===reqTask)?reqTask:((gsla[0]||{}).task_type||"");let qWhen=pre?"book":"now";const teamOpts=teams.map(t=>`<option value="${esc(t.name)}"${t.name===team0?" selected":""}>${esc(t.name)} · ${esc(t.room)}</option>`).join("");const taskOpts=gsla.map(s=>`<option value="${esc(s.task_type)}"${s.task_type===task0?" selected":""}>${esc(s.task_type)}</option>`).join("")+`<option value="__custom__">✎ 自定义任务…</option>`;const isDev=grp==="设备组";
+const pInfo=p?(()=>{const sh=shiftByName(p.shift);const n=(state.orders||[]).filter(o=>o.assignee_id===p.open_id&&orderIsToday(o)&&o.status!=="cancelled").length;return `今天 ${esc(p.shift||"未排班")}${sh?` ${esc(sh.start)}–${esc(sh.end)}`:""} · 已有 ${n} 单`})():"";
+const head=p?`${avatar(p)}<div class="qs-who"><strong>${esc(p.name)}</strong><span>${esc(grp)} · 空闲可派 · ${pInfo}</span></div>`:`<div class="qs-who"><strong>下待派工单</strong><span>${esc(grp)} · 进队列等接单</span></div>`;const html=`<div class="qsheet-mask" id="qsheetMask"><div class="qsheet"><div class="qs-grab"></div><div class="qs-head">${head}<button class="qs-x" id="qsX">${icon("x",true)}</button></div><div class="qs-body"><div class="qs-field"><label>直播间 / 团队</label><select id="qsTeam">${teamOpts}</select></div><div class="qs-field"><label>任务</label><select id="qsTask">${taskOpts}</select><input id="qsTaskCustom" class="qs-custom" autocomplete="off" placeholder="输入自定义任务名" style="display:none"></div><div class="qs-field"><label>到岗时间</label><div class="qs-when" id="qsWhen"><button type="button" data-qw="now" class="${qWhen==="now"?"active":""}">${icon("zap",true)}立即</button><button type="button" data-qw="book" class="${qWhen==="book"?"active":""}">${icon("calendar-clock",true)}预约</button></div><div class="qs-book three" id="qsBook" style="display:${qWhen==="book"?"grid":"none"}"><input type="date" id="qsDate" min="${todayStr()}" value="${esc((pre&&pre.date)||todayStr())}"><input type="time" id="qsAt" value="${esc((pre&&pre.at)||nextHourStr())}"><input type="time" id="qsAt2" value="${esc((pre&&pre.end)||addMinStr((pre&&pre.at)||nextHourStr(),60))}"></div><div class="qs-dur" id="qsDur" style="display:${qWhen==="book"?"flex":"none"}">${[60,120,180,240,360].map(m=>`<button type="button" data-dur="${m}" class="${m===60?"active":""}">${m%60===0?m/60+"小时":m+"分"}</button>`).join("")}</div><div class="qs-info" id="qsInfo"></div></div><div class="qs-field"><label>${isDev?"问题描述（设备组必填）":"备注（选填）"}</label><textarea id="qsNote" rows="2" placeholder="${isDev?"必填：说清楚设备出了什么问题，例如：声卡没声音 / 网络掉线…":"补充说明，选填"}"></textarea></div>${grp==="灯光组"?`<div class="qs-field"><label>歌曲附件 · 编歌必传（最好都传），其他任务选填</label><div class="media-pick"><label class="text-btn media-btn">${icon("volume-2",true)}<span id="qsAudName">传音频</span><input id="qsAudio" type="file" accept="audio/*" class="file-over"></label><label class="text-btn media-btn">${icon("video",true)}<span id="qsVidName">传视频</span><input id="qsVideo" type="file" accept="video/*" class="file-over"></label></div></div>`:""}</div><div class="qs-foot"><button class="primary" id="qsGo">${icon("send")}${p?"派单给 "+esc(p.name):"提交待派单"}</button></div></div></div>`;const holder=document.createElement("div");holder.innerHTML=html;const node=holder.firstChild;document.body.appendChild(node);drawIcons();requestAnimationFrame(()=>{const s=node.querySelector(".qsheet");if(s)s.classList.add("in")});node.onclick=e=>{if(e.target===node)closeQuick()};node.querySelector("#qsX").onclick=closeQuick;
+{/* 下滑顶部横条/头部可关闭弹层 */
+const sheet=node.querySelector(".qsheet"),grab=node.querySelector(".qs-grab"),headEl=node.querySelector(".qs-head");
+let sy=null,dy=0,drag=false;const gy=e=>(e.touches&&e.touches[0]?e.touches[0]:e).clientY;
+const st=e=>{sy=gy(e);dy=0;drag=true;sheet.style.transition="none"};
+const mv=e=>{if(!drag)return;dy=Math.max(0,gy(e)-sy);sheet.style.transform=`translateY(${dy}px)`;if(dy>4&&e.cancelable)e.preventDefault()};
+const en=()=>{if(!drag)return;drag=false;sheet.style.transition="";if(dy>90){sheet.style.transform="";closeQuick()}else{sheet.style.transform=""}};
+[grab,headEl].forEach(el=>{if(!el)return;el.addEventListener("touchstart",st,{passive:true});el.addEventListener("touchmove",mv,{passive:false});el.addEventListener("touchend",en);el.addEventListener("touchcancel",en)});}
+const qt=node.querySelector("#qsTask"),qc=node.querySelector("#qsTaskCustom");
+const updInfo=()=>{const el=node.querySelector("#qsInfo");if(!el)return;if(qWhen==="now"){el.innerHTML=`${icon("zap",true)} 到岗 = <b>现在</b>，按紧急派发并强提醒`;drawIcons();return}
+const dv=(node.querySelector("#qsDate")||{}).value||todayStr();const av2=(node.querySelector("#qsAt")||{}).value||"";const ev2=(node.querySelector("#qsAt2")||{}).value||"";const dm2=av2&&ev2?((((toMinutes(ev2)-toMinutes(av2))%1440)+1440)%1440):0;
+const lbl=dv===todayStr()?"今天":dv===addDaysStr(1)?"明天":dv===addDaysStr(2)?"后天":weekdayLabel(dv)+" "+dv.slice(5);
+const dtx=dm2?(dm2<60?`${dm2}分钟`:dm2%60===0?`${dm2/60}小时`:`${Math.floor(dm2/60)}小时${dm2%60}分`):"";el.innerHTML=`${icon("calendar-clock",true)} 预约 <b>${esc(lbl)} ${esc(av2||"--:--")}–${esc(ev2||"--:--")}</b>${dtx?` · 共${dtx}`:""}${pre&&p&&dv===pre.date&&av2===pre.at?` · ${esc(p.name)} 的空闲时段`:""}`;drawIcons()};
+node.querySelectorAll("#qsWhen [data-qw]").forEach(b=>b.onclick=()=>{qWhen=b.dataset.qw;node.querySelectorAll("#qsWhen [data-qw]").forEach(x=>x.classList.toggle("active",x.dataset.qw===qWhen));const bk=node.querySelector("#qsBook");if(bk)bk.style.display=qWhen==="book"?"grid":"none";const du=node.querySelector("#qsDur");if(du)du.style.display=qWhen==="book"?"flex":"none";updInfo()});{const qd=node.querySelector("#qsDate"),qa=node.querySelector("#qsAt"),qe=node.querySelector("#qsAt2");const curDur=()=>{if(!qa||!qe||!qa.value||!qe.value)return 60;return (((toMinutes(qe.value)-toMinutes(qa.value))%1440)+1440)%1440||60};const syncDur=()=>{const d=curDur();node.querySelectorAll("#qsDur [data-dur]").forEach(b=>b.classList.toggle("active",Number(b.dataset.dur)===d))};node.querySelectorAll("#qsDur [data-dur]").forEach(b=>b.onclick=()=>{if(qa&&qa.value&&qe){qe.value=addMinStr(qa.value,Number(b.dataset.dur))}syncDur();updInfo()});if(qd)qd.onchange=updInfo;if(qa)qa.onchange=()=>{const d=curDur();if(qe&&qa.value)qe.value=addMinStr(qa.value,d);syncDur();updInfo()};if(qe)qe.onchange=()=>{syncDur();updInfo()};syncDur();}
+qt.onchange=()=>{const c=qt.value==="__custom__";qc.style.display=c?"block":"none";if(c)setTimeout(()=>qc.focus(),0);updInfo()};qc.oninput=updInfo;{const qA=node.querySelector("#qsAudio"),qV=node.querySelector("#qsVideo");if(qA)qA.onchange=()=>{const f=qA.files[0];const s=node.querySelector("#qsAudName");if(s)s.textContent=f?("✓ "+f.name.slice(0,12)):"传音频"};if(qV)qV.onchange=()=>{const f=qV.files[0];const s=node.querySelector("#qsVidName");if(s)s.textContent=f?("✓ "+f.name.slice(0,12)):"传视频"};}node.querySelector("#qsTeam").onchange=updInfo;updInfo();
+const go=node.querySelector("#qsGo");go.onclick=async()=>{const team=node.querySelector("#qsTeam").value;let task=qt.value==="__custom__"?(qc.value||"").trim():qt.value;task=(task||"").trim();if(!task){showToast(qt.value==="__custom__"?"请输入自定义任务名":"请选择任务");return}const note=(node.querySelector("#qsNote").value||"").trim();if(isDev&&String(ruleV("dev_note","1"))!=="0"&&!note){showToast("设备组下单必须填写问题描述");node.querySelector("#qsNote").focus();return}if(grp==="灯光组"&&task.includes("编歌")&&String(ruleV("biange_media","1"))!=="0"){const _fa=(node.querySelector("#qsAudio")||{}).files,_fv=(node.querySelector("#qsVideo")||{}).files;if(!(_fa&&_fa[0])&&!(_fv&&_fv[0])){showToast("编歌必须上传歌曲音频或视频（最好都传）");return}}reqTeam=team;reqTask=task;go.disabled=true;go.textContent="提交中…";const body={team,task,group:grp,when:qWhen};if(qWhen==="book"){const dv=(node.querySelector("#qsDate")||{}).value;const av2=(node.querySelector("#qsAt")||{}).value;const ev2=(node.querySelector("#qsAt2")||{}).value;if(!dv||!av2||!ev2){showToast("请选择预约日期和起止时间");return}body.date=dv;body.at=av2;body.end=ev2}if(note)body.note=note;if(openId)body.assignee=openId;try{const _fa=(node.querySelector("#qsAudio")||{}).files,_fv=(node.querySelector("#qsVideo")||{}).files;if((_fa&&_fa[0])||(_fv&&_fv[0])){go.textContent="上传中…";const upOne=async f=>{const up=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":f.type||"application/octet-stream"},body:f});const ur=await up.json().catch(()=>({ok:false,msg:"上传失败"}));if(!ur.ok)throw Object.assign(new Error(ur.msg||"上传失败"),{up:1});return ur};if(_fa&&_fa[0]){const ur=await upOne(_fa[0]);body.media=ur.url;body.media_kind=ur.kind}if(_fv&&_fv[0]){const ur=await upOne(_fv[0]);if(body.media){body.media2=ur.url;body.media2_kind=ur.kind}else{body.media=ur.url;body.media_kind=ur.kind}}go.textContent="提交中…"}await apiPost("order",body);showToast(openId?"已派单给 "+(p?p.name:"该成员"):"待派单已提交");closeQuick();load()}catch(e){go.disabled=false;go.innerHTML=icon("send")+(p?"派单给 "+esc(p.name):"提交待派单");drawIcons();if(e&&e.up)showToast(e.message)}}}
+function dashStrip(){const st=boardStaff().filter(p=>!p.intern);const od=boardOrders();const onN=st.filter(isOnDuty).length;const free=st.filter(assignable);const workN=od.filter(i=>i.status==="working").length;const waitN=od.filter(i=>i.status==="wait").length;const urg=od.filter(i=>i.urgent&&i.status!=="done").length;const canQ=me.role==="admin"||me.lead;const pill=(label,n,cls,goto)=>goto?`<button class="dp ${cls||""}" data-goto="${goto}"><b>${n}</b>${label}</button>`:`<span class="dp ${cls||""}"><b>${n}</b>${label}</span>`;const avs=free.slice(0,12).map(p=>`<button class="dash-av"${canQ?` data-quick="${esc(p.open_id)}"`:""} title="${esc(p.name)} · 空闲${canQ?" · 点击派单":""}">${avatar(p)}<span>${esc(p.name)}</span></button>`).join("");return `<div class="dash"><span class="dash-lb">${free.length?(canQ?"谁有空 · 点头像派单":"谁有空"):"当前无人空闲"}</span>${avs}${canQ?`<button class="dash-new" id="quickNew">${icon("plus",true)}待派单</button>`:""}<span class="dash-sep"></span>${pill("在岗",onN)}${pill("空闲",free.length,"g")}${pill("进行",workN,"a")}${pill("待派",waitN,waitN?"a":"","dispatch")}${urg?pill("紧急",urg,"r","dispatch"):""}</div>`}
+function adminOverview(){return `${groupTabsHtml()}${dashStrip()}${schedulePanel()}`}
+function completionRate(){return state.orders.length?Math.round(state.orders.filter(item=>item.status==="done").length/state.orders.length*100):0}
+function adminDispatch(){const filter=window.dispatchFilter||"all";const list=sortedOrders(boardOrders().filter(item=>filter==="all"||item.status===filter));return `${groupTabsHtml()}<div class="toolbar" style="margin-bottom:12px"><div class="filters">${[["all","全部"],["wait","待派工"],["working","进行中"],["done","已完成"]].map(([id,label])=>`<button class="filter ${filter===id?"active":""}" data-filter="${id}">${label}</button>`).join("")}</div><span class="dim">共 ${list.length} 条</span></div>${ordersPanel(list,"dispatch","今日工单")}`}
+function adminCrew(){const isA=me.role==="admin";const users=isA?(state.users||[]):staffForGroup(me.grp);const idOf=u=>u.role==="team"?"team":u.role==="admin"?"admin":u.intern?"intern":u.lead?"lead":"staff";const IDLBL={team:"团队（下单方）",admin:"管理员",lead:"组长",intern:"实习",staff:"组员"};const idOpts=isA?[["team","团队（下单方）"],["intern","实习（不可派）"],["staff","组员"],["lead","组长（管本组）"],["admin","管理员"]]:[["staff","组员"],["intern","实习（不可派）"]];const head=isA?["人员与权限","按组分区 · 状态在最前；点身份 / 班次 / 组别即可改"]:["本组人员 · "+(me.grp||""),"状态在最前；设身份、班次、今日请假"];const sortM=arr=>[...arr].sort((a,b)=>(b.lead?1:0)-(a.lead?1:0)||(a.intern?1:0)-(b.intern?1:0)||String(a.name).localeCompare(String(b.name)));const gsel=isA&&myGroups().length>1?(myGroups().includes(boardGrp)?boardGrp:myGroups()[0]):null;let sections=[];if(isA){curGroups().filter(g=>!gsel||g.name===gsel).forEach(g=>{const m=users.filter(u=>u.grp===g.name);if(m.length)sections.push({name:g.name,color:g.color,members:sortM(m)})});const other=users.filter(u=>!curGroups().some(g=>g.name===u.grp));if(other.length)sections.push({name:"未分组 / 下单方",color:"#8E8E93",members:sortM(other)})}else{sections.push({name:me.grp||"本组",color:groupColor(me.grp),members:sortM(users)})}const th=isA?`<div class="ca-row ca-head"><span>状态</span><span>成员</span><span>身份</span><span>班次</span><span>组别</span><span class="r">请假</span></div>`:`<div class="ca-row ca-head"><span>状态</span><span>成员</span><span>身份</span><span>班次</span><span class="r">请假</span></div>`;const rowHtml=u=>{const worker=u.role!=="team";const a=personAvail(u);const st=`<span class="crew-state ${a.cls}"><span class="status-dot"></span>${a.label}</span>`;const who=`<div class="ca-who">${avatar(u)}<div class="ca-nm">${isA?`<input class="alias-in" data-user="${esc(u.open_id)}" data-field="alias" value="${esc(u.alias||"")}" placeholder="${esc(u.fs_name||u.name)}" maxlength="20" title="显示名,整个软件都用它;留空=用飞书名「${esc(u.fs_name||u.name)}」">`:`<strong>${esc(u.name)}</strong>`}<span class="dim">${isA?`飞书:${esc(u.fs_name||u.name)}`:(u.last_login?esc((u.last_login||"").slice(5,16))+" 登录":"—")}</span></div></div>`;const isSelf=u.open_id===me.open_id;const idSel=isSelf?`<label class="ca-f"><i class="ca-lab">身份</i><span class="ca-ro">${esc(IDLBL[idOf(u)]||"组员")}<i class="dim"> · 本人不可改</i></span></label>`:`<label class="ca-f"><i class="ca-lab">身份</i><select data-identity="${esc(u.open_id)}">${idOpts.map(([v,l])=>`<option value="${v}" ${v===idOf(u)?"selected":""}>${l}</option>`).join("")}</select></label>`;const grpSel=isA?`<label class="ca-f"><i class="ca-lab">组别</i><select data-user="${esc(u.open_id)}" data-field="grp"><option value="">（无）</option>${curGroups().map(g=>`<option value="${esc(g.name)}" ${g.name===u.grp?"selected":""}>${esc(g.name)}</option>`).join("")}</select></label>`:"";if(isA&&!worker)return `<div class="ca-row">${Number(u.approved)===0?`<span class="crew-state s-busy"><span class="status-dot"></span>待审核</span>`:`<span class="crew-state s-off"><span class="status-dot"></span>下单方</span>`}${who}${idSel}<div class="ca-none" style="grid-column:4/-1">${Number(u.approved)===0?`<button class="text-btn amber" data-approve="${esc(u.open_id)}">✓ 通过审核,允许使用</button> 新登录的飞书账号,放行前什么都干不了`:"改身份为「组员」后即可排班；也可在此设组别"}</div></div>`;const shift=`<label class="ca-f"><i class="ca-lab">班次</i><select data-user="${esc(u.open_id)}" data-field="shift">${(state.shifts||[]).map(s=>`<option ${s.name===u.shift?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label>`;const resting=a.label==="小休";const restBtn=resting?`<button class="text-btn amber" data-rest="${esc(u.open_id)}">${icon("play",true)}结束小休</button>`:"";const leave=`<div class="ca-tail">${restBtn}<button class="text-btn ${onLeave(u)?"amber":""}" data-leave="${esc(u.open_id)}" data-on="${onLeave(u)?"1":"0"}">${icon(onLeave(u)?"rotate-ccw":"palmtree",true)}${onLeave(u)?"销假":"请假"}</button></div>`;return `<div class="ca-row">${st}${who}${idSel}${shift}${grpSel}${leave}</div>`};const body=sections.map(sec=>{const onN=sec.members.filter(isOnDuty).length;const hdr=`<div class="crew-sec"><span class="crew-sec-dot" style="background:${sec.color}"></span><strong>${esc(sec.name)}</strong><span class="dim">${sec.members.length} 人${onN?" · 在岗 "+onN:""}</span></div>`;return hdr+sec.members.map(rowHtml).join("")}).join("")||empty("users",isA?"还没有人登录":"本组暂无成员");return `${isA?groupTabsHtml():""}${shiftOverviewPanel(gsel)}<div style="height:14px"></div><section class="panel"><div class="panel-head"><div><h2>${esc(head[0])}${gsel?` · ${esc(gsel)}`:""}</h2><p>${esc(head[1])}</p></div></div><div class="crew-tbl ${isA?"as-admin":"as-lead"}">${th}${body}</div></section>`}
+function adminSettings(){const bar=`<div class="pgtabs" style="margin-bottom:12px">${cfgSecTabs(true)}</div>`;return `${bar}<div class="settings-wrap">${(()=>{const on=k=>String(ruleV(k,"1"))!=="0";const num=(k,d)=>{const v=Number(ruleV(k,d));return isNaN(v)?d:v};const dis=me.role==="admin"?"":" disabled";const tg=(key,chk,t,s)=>`<label class="alert-row" style="padding:8px 0"><div><strong>${t}</strong><span>${s}</span></div><span class="switch"><input type="checkbox" data-rule="${key}"${chk?" checked":""}${dis}><i></i></span></label>`;const nm=(key,v,mn,mx,st2,t,s)=>`<div class="alert-row" style="padding:8px 0"><div><strong>${t}</strong><span>${s}</span></div><input type="number" data-rulenum="${key}" min="${mn}" max="${mx}" step="${st2}" value="${v}"${dis} style="width:82px;height:36px;text-align:center"></div>`;const gm=String(ruleV("gate_mode","open"));return `<section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>规则库</h2><p>下单与预约的硬规则，改动立即生效${me.role==="admin"?"":"（仅管理员可改）"}</p></div></div><div class="panel-body"><div class="alert-row" style="padding:8px 0"><div><strong>登录准入</strong><span>本应用是公司自建应用,只有无忧传媒的飞书账号能登录;在飞书管理后台把应用「可用范围」设为团播部门即可只限部门,全自动无需审核</span></div><select id="gateMode"${dis} style="width:150px;height:36px"><option value="open"${gm==="open"?" selected":""}>自动放行(推荐)</option><option value="dept"${gm==="dept"?" selected":""}>按部门自动校验</option><option value="manual"${gm==="manual"?" selected":""}>人工审核</option></select></div>${gm==="dept"?`<div class="alert-row" style="padding:8px 0"><div><strong>允许的部门ID</strong><span>飞书后台查 open_department_id,逗号分隔;需应用开通「读取通讯录」权限,查不到时自动转人工审核兜底</span></div><input id="deptIds" value="${esc(String(ruleV("allow_dept_ids","")))}"${dis} style="width:230px;height:36px"></div>`:""}${tg("rule_book_lock_sla",on("book_lock_sla"),"团队预约锁任务工时","团队预约不能自选结束时间，时长＝任务标准工时（工时在「任务」节改）")}${nm("book_team_cap",num("team_cap",2),0,10,1,"每团未开始预约上限","第 N+1 个预约直接拦；0＝不限")}${nm("book_team_day_min",num("team_day_min",240),0,1440,30,"每团每天预约上限（分钟）","一个团一个排班日最多预约的总分钟数，下单页实时显示已约/剩余；0＝不限")}${nm("book_grace_min",num("grace_min",15),0,120,5,"到点未开始自动释放（分钟）","预约过点 N 分钟没点「开始」自动取消放人并私信；0＝关闭")}${nm("book_max_min",num("max_min",720),60,1440,30,"单次预约最长（分钟）","管理员/组长自定义时长的封顶")}${nm("overrun_remind_min",num("overrun_remind_min",30),0,1440,10,"超时提醒（分钟）","开始后超过 计划工时+N分钟 未点完成,飞书私信提醒本人;0＝关闭")}${nm("overrun_close_min",num("overrun_close_min",180),0,1440,30,"超时自动关单（分钟）","超过 计划工时+N分钟 仍未完成,自动标记完成并释放人(记入审计);0＝关闭")}${tg("rule_dev_note",on("dev_note"),"设备组下单必填问题描述","不写清设备问题不给下单")}${tg("rule_biange_media",on("biange_media"),"编歌必传音/视频","灯光组编歌单必须带歌曲附件（最好音视频都传）")}${tg("rule_done_note",on("done_note"),"完成必填说明","完成工单必须写做了什么/处理结果")}</div></section>`})()}<section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>页面可见性</h2><p>勾选=该角色底部导航显示这个页;至少留一个(管理员/组长始终全量)</p></div></div><div class="panel-body">${(()=>{const box=(role,base)=>{const cur=String(ruleV("nav_"+role,"")||"");const on=id=>!cur||cur.split(",").includes(id);return `<div class="navvis">${base.map(i=>`<label class="nv"><input type="checkbox" data-navvis="${role}" value="${i.id}" ${on(i.id)?"checked":""}> ${i.label}</label>`).join("")}</div>`};return `<div class="section-label">团队端(下单方)</div>${box("team",NAV.team)}<div class="section-label" style="margin-top:12px">组员端(灯光师/设备/视觉)</div>${box("staff",NAV.staff)}`})()}</div></section><section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>数据维护</h2><p>数据存在服务器 app 文件夹:dispatch.db=正式库 / dispatch-test.db=测试库(互不影响);清理仅管理员可用,操作会记入审计</p></div></div><div class="panel-body"><div class="alert-row" style="padding:8px 0"><div><strong>清空全部工单</strong><span>删掉所有工单(含测试期的单),人员/团队/班次/规则/显示名全部保留</span></div><button class="text-btn danger" id="purgeOrders">清空工单</button></div><div class="alert-row" style="padding:8px 0"><div><strong>清空审计日志</strong><span>删掉全部操作记录,清完会自动留一条「清空审计」的新记录</span></div><button class="text-btn danger" id="purgeAudit">清空审计</button></div></div></section><section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>飞书日程提醒</h2><p>派单/接单后给灯光师建一条飞书任务，到岗前自动提醒（免审核，直接生效）</p></div></div><div class="panel-body"><label class="alert-row" style="padding:8px 0"><div><strong>开启日程提醒</strong><span>同步到灯光师的飞书任务，按下方分钟数提前提醒</span></div><span class="switch"><input type="checkbox" id="setReminderOn" ${state.reminder&&state.reminder.on?"checked":""}><i></i></span></label><div class="field" style="max-width:240px;margin-top:10px"><label for="setReminderMin">提前提醒（分钟）</label><input id="setReminderMin" type="number" min="0" max="180" value="${state.reminder?state.reminder.minutes:15}"></div><label class="alert-row" style="padding:8px 0;margin-top:6px"><div><strong>下单加急必响</strong><span>新单用飞书“加急”强提醒（关着App也弹，需加急权限审核通过后开启）</span></div><span class="switch"><input type="checkbox" id="setUrgentOn" ${state.urgent_on?"checked":""}><i></i></span></label></div></section><section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>分组管理</h2><p>每组独立任务与人员；可改名、改色、排序。开「自动派」后，该组新单自动派给在岗且空闲的人</p></div></div><div class="grp-mgr">${curGroups().map(g=>`<div class="grp-mrow"><span class="grp-swatch" style="background:${esc(g.color)}"></span><input class="grp-nm" value="${esc(g.name)}" data-entity="groups" data-id="${g.id}" data-field="name"><input type="color" class="grp-color" value="${colorHex(g.color)}" data-entity="groups" data-id="${g.id}" data-field="color" title="组色"><input type="number" class="grp-sort" value="${g.sort}" data-entity="groups" data-id="${g.id}" data-field="sort" title="排序" min="1"><label class="grp-auto" title="开启后该组新单自动派给在岗空闲的人"><span>自动派</span><span class="switch"><input type="checkbox" data-entity="groups" data-id="${g.id}" data-field="auto" ${g.auto?"checked":""}><i></i></span></label><button class="icon-btn" title="删除组" data-delete="groups" data-id="${g.id}">${icon("trash-2",true)}</button></div>`).join("")}</div><div class="add-row grp-add"><input id="newGrp" placeholder="新组名（如 音控组）"><input type="color" id="newGrpColor" value="#0A84FF" title="组色"><input id="newGrpSort" type="number" placeholder="排序" value="${curGroups().length+1}" min="1"><button class="text-btn amber" id="addGroup">${icon("plus",true)}加组</button></div></section><section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>班次时间</h2><p>决定"当前在岗"统计与排班时间轴；每班 9 小时，晚班可跨夜（如 18:00–03:00）</p></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>班次</th><th>开始</th><th>结束</th><th></th></tr></thead><tbody>${(state.shifts||[]).map(s=>`<tr><td data-label="班次"><input value="${esc(s.name)}" data-entity="shifts" data-id="${s.id}" data-field="name"></td><td data-label="开始"><input value="${esc(s.start)}" data-entity="shifts" data-id="${s.id}" data-field="start" placeholder="09:00"></td><td data-label="结束"><input value="${esc(s.end)}" data-entity="shifts" data-id="${s.id}" data-field="end" placeholder="18:00"></td><td class="td-del"><button class="icon-btn" title="删除班次" data-delete="shifts" data-id="${s.id}">${icon("trash-2",true)}</button></td></tr>`).join("")}</tbody></table></div><div class="add-row" style="grid-template-columns:1.4fr .7fr .7fr auto"><input id="newShift" placeholder="班次名（如 早班）"><input id="newShiftStart" placeholder="09:00"><input id="newShiftEnd" placeholder="18:00"><button class="text-btn amber" id="addShift">${icon("plus",true)}添加</button></div></section><section class="panel" style="margin-bottom:14px"><div class="panel-head"><div><h2>直播团队</h2><p>团队名称与直播间号</p></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>团队</th><th>直播间</th><th></th></tr></thead><tbody>${state.teams.map(team=>`<tr><td data-label="团队"><input value="${esc(team.name)}" data-entity="teams" data-id="${team.id}" data-field="name"></td><td data-label="直播间"><input value="${esc(team.room)}" data-entity="teams" data-id="${team.id}" data-field="room"></td><td class="td-del"><button class="icon-btn" title="删除团队" data-delete="teams" data-id="${team.id}">${icon("trash-2",true)}</button></td></tr>`).join("")}</tbody></table></div><div class="add-row" style="grid-template-columns:1.4fr .9fr auto"><input id="newTeam" placeholder="团队名"><input id="newRoom" placeholder="直播间号（如 8号）"><button class="text-btn amber" id="addTeam">${icon("plus",true)}添加</button></div></section><section class="panel"><div class="panel-head"><div><h2>任务分类与工时</h2><p>每个组各自的任务；工时+缓冲决定到岗时间</p></div></div>${cfgTabsHtml()}<div class="table-scroll"><table class="data-table"><thead><tr><th>任务分类</th><th>工时</th><th>缓冲</th><th></th></tr></thead><tbody>${slaForGroup(cfgGrp).map(item=>`<tr><td data-label="类型"><input value="${esc(item.task_type)}" data-entity="sla" data-id="${item.id}" data-field="task_type"></td><td data-label="工时"><input value="${item.minutes}" data-entity="sla" data-id="${item.id}" data-field="minutes"></td><td data-label="缓冲"><input value="${item.buffer}" data-entity="sla" data-id="${item.id}" data-field="buffer"></td><td class="td-del"><button class="icon-btn" title="删除规则" data-delete="sla" data-id="${item.id}">${icon("trash-2",true)}</button></td></tr>`).join("")}</tbody></table></div><div class="add-row" style="grid-template-columns:1.4fr .7fr .7fr auto"><input id="newTask" placeholder="任务类型"><input id="newMinutes" placeholder="工时"><input id="newBuffer" placeholder="缓冲"><button class="text-btn amber" id="addSla">${icon("plus",true)}添加</button></div></section></div>`}
+function auditCatOf(a){if(a.includes("下单"))return"order";if(a.includes("派单")||a.includes("接单")||a.includes("改派"))return"assign";if(a.includes("完成")||a.includes("开始")||a.includes("关单"))return"done";if(a.includes("取消")||a.includes("释放")||a.includes("清空"))return"cancel";if(a.includes("身份")||a.includes("请假")||a.includes("销假")||a.includes("审核")||a.includes("认领"))return"crew";if(a.includes("登录"))return"login";return"cfg"}
+const AUDIT_CATS=[["all","全部"],["order","下单"],["assign","派单/接单"],["done","开始/完成"],["cancel","取消/释放"],["crew","人员"],["cfg","配置/规则"],["login","登录"]];
+function adminAudit(){if(!auditRows){fetch("/api/audit").then(response=>response.json()).then(result=>{if(result.ok){auditRows=result.data;if(page==="audit")renderApp()}})}
+const rows=auditRows||[];const cnt=c=>c==="all"?rows.length:rows.filter(r=>auditCatOf(r.action)===c).length;
+const bar=`<div class="filters" style="margin-bottom:10px">${AUDIT_CATS.map(([id,l])=>`<button class="filter ${auditCat===id?"active":""}" data-auditcat="${id}">${l}${cnt(id)?` ${cnt(id)}`:""}</button>`).join("")}</div>`;
+const list=auditCat==="all"?rows:rows.filter(r=>auditCatOf(r.action)===auditCat);
+return `${bar}<section class="panel"><div class="panel-head"><div><h2>审计日志 · 全程留痕</h2><p>谁下的单、谁派的、谁改的规则,每一步都有记录 · 所有人可见 · 最近 500 条</p></div></div><div class="table-scroll">${auditRows?list.map(item=>`<div class="audit-row"><time>${esc(item.ts.slice(5,16))}</time><span>${esc(item.name)}</span><strong>${esc(item.action)}</strong><span class="muted">${esc(item.detail)}</span></div>`).join("")||empty("history","该分类暂无记录"):empty("loader-circle","正在加载")}</div></section>`}
+
+function loadStats(){if(statsLoading)return;statsLoading=true;fetch(`/api/stats?range=${statsRange}&group=${encodeURIComponent(statsGroup)}`).then(r=>r.json()).then(res=>{statsLoading=false;if(res.ok){statsData=res.data;if(page==="stats")renderApp()}}).catch(()=>{statsLoading=false})}
+function loadStatsPerson(oid){fetch(`/api/stats?range=${statsRange}&group=${encodeURIComponent(statsGroup)}&person=${encodeURIComponent(oid)}`).then(r=>r.json()).then(res=>{if(res.ok&&statsPerson===oid){statsPersonData=res.data;if(page==="stats")renderApp()}})}
+function hrs(m){return (m/60).toFixed(1)}
+function personDetail(){if(!statsPersonData||statsPersonData.person!==statsPerson)return `<div class="stat-detail">${empty("loader-circle","加载中…")}</div>`;const orders=statsPersonData.orders;if(!orders.length)return `<div class="stat-detail">${empty("clipboard","该范围内无接单")}</div>`;const byDay={};orders.forEach(o=>{(byDay[o.date]=byDay[o.date]||[]).push(o)});const days=Object.keys(byDay).sort().reverse();return `<div class="stat-detail">${days.map(day=>`<div class="detail-day"><div class="detail-date">${esc(day)} · ${byDay[day].length} 单</div>${byDay[day].map(o=>`<div class="detail-order"><span class="mono">${esc(o.arrive)||"--:--"}</span><span>${esc(o.team)} · ${esc(o.task_type)}</span><span class="dim">预计${o.minutes}分</span>${orderTag(o)}${usedMin(o)!=null?`<span class="prog fin">${icon("timer",true)}用时 ${usedText(o)}</span>`:""}${o.note?`<span class="note-snip" title="${esc(o.note)}">${icon("message-square-text",true)}${esc(o.note.slice(0,16))}${o.note.length>16?"…":""}</span>`:""}${(o.note||o.media)?`<button class="media-chip" data-detail="1" data-oid="${o.id}" data-media="${esc(o.media||"")}" data-kind="${esc(o.media_kind||"audio")}" data-note="${esc(o.note||"")}" data-team="${esc(o.team)}">${icon(o.media?(o.media_kind==="video"?"video":"volume-2"):"message-square-text",true)}${o.media?(o.media_kind==="video"?"视频":"语音"):"备注"}</button>`:""}</div>`).join("")}</div>`).join("")}</div>`}
+function adminStats(){if(!statsData||statsData.range!==statsRange)loadStats();const d=(statsData&&statsData.range===statsRange)?statsData:null;const ranges=[["7d","近7天"],["30d","近30天"],["month","本月"],["all","全部"]];const rangeBar=`<div class="filters">${ranges.map(([id,label])=>`<button class="filter ${statsRange===id?"active":""}" data-range="${id}">${label}</button>`).join("")}</div>`;const grpBar=((me.role==="admin"||me.role==="team")&&curGroups().length>1)?`<div class="pgtabs" style="margin-bottom:10px">${statsGrpTabs()}</div>`:(me.role==="staff"?`<div style="margin-bottom:10px">${groupChip(me.grp)} <span class="dim">本组统计</span></div>`:"");const bar=`${grpBar}<div class="toolbar" style="margin-bottom:14px">${rangeBar}<button class="text-btn" id="statsCsv" ${d?"":"disabled"}>${icon("download",true)}导出 CSV</button></div>`;if(!d)return bar+empty("loader-circle","正在统计…");const s=d.summary;const kpis=`<div class="metric-row"><div class="metric"><span>总接单</span><strong>${s.orders}</strong></div><div class="metric green"><span>已完成</span><strong>${s.done}</strong></div><div class="metric amber"><span>预计工时</span><strong>${hrs(s.minutes)}<em> 小时</em></strong></div><div class="metric green"><span>平均用时</span><strong>${s.avgUsed!=null?`${s.avgUsed}<em> 分钟</em>`:"—"}</strong></div><div class="metric"><span>覆盖天数</span><strong>${s.days}</strong></div><div class="metric cyan"><span>参与人数</span><strong>${s.people}</strong></div></div>`;const maxDay=Math.max(1,...d.byDay.map(x=>x.orders));const trend=`<section class="panel"><div class="panel-head"><div><h2>每日接单趋势</h2><p>${esc(d.from)} 至 ${esc(d.to)}</p></div></div><div class="panel-body"><div class="trend">${d.byDay.length?d.byDay.map(x=>`<div class="trend-col" title="${esc(x.date)}：${x.orders} 单，完成 ${x.done}"><div class="trend-bar" style="height:${Math.round(x.orders/maxDay*100)}%"><span class="trend-done" style="height:${x.orders?Math.round(x.done/x.orders*100):0}%"></span></div><span class="trend-x">${esc(x.date.slice(5))}</span></div>`).join(""):empty("calendar","该范围暂无数据")}</div></div></section>`;const prow=p=>{const open=statsPerson===p.open_id;return `<div class="stat-prow ${open?"open":""}" data-person="${esc(p.open_id)}"><span class="nm">${esc(p.name)}</span><span data-label="接单">${p.orders}</span><span data-label="完成">${p.done}</span><span data-label="工时">${hrs(p.minutes)}h</span><span class="dim" data-label="主要">${esc(p.topType||"—")}</span><span class="dim mono" data-label="最近">${esc(p.lastDate||"—")}</span></div>${open?personDetail():""}`;};const byPerson=`<section class="panel"><div class="panel-head"><div><h2>按人员统计</h2><p>点某人展开，看 TA 每天接了什么单</p></div></div><div class="stat-ptable"><div class="stat-prow head"><span>灯光师</span><span>接单</span><span>完成</span><span>工时</span><span>主要类型</span><span>最近</span></div>${d.byPerson.length?d.byPerson.map(prow).join(""):empty("users","该范围暂无接单")}</div></section>`;const maxType=Math.max(1,...d.byType.map(x=>x.orders));const byType=`<section class="panel"><div class="panel-head"><div><h2>按类型统计</h2><p>各类任务的接单次数与实际平均用时（“大概需要多久”）</p></div></div><div class="panel-body">${d.byType.length?d.byType.map(x=>`<div class="type-row"><span class="type-name">${esc(x.task_type)}</span><div class="type-bar"><span style="width:${Math.round(x.orders/maxType*100)}%"></span></div><span class="type-num">${x.orders} 单 · <b>均 ${x.avgUsed!=null?x.avgUsed+" 分":"—"}</b>${x.plannedAvg!=null?` <span class="dim">预计 ${x.plannedAvg} 分</span>`:""}</span></div>`).join(""):empty("list","暂无")}</div></section>`;return `${bar}${kpis}${trend}<div style="height:14px"></div>${byPerson}<div style="height:14px"></div>${byType}`;}
+function exportStatsCsv(){if(!statsData)return;const rows=[["灯光师","接单数","完成数","工时(小时)","主要类型","最近接单"]];statsData.byPerson.forEach(p=>rows.push([p.name,p.orders,p.done,hrs(p.minutes),p.topType||"",p.lastDate||""]));rows.push([]);rows.push(["任务类型","次数","平均实际用时(分)","预计单均(分)","累计工时(小时)"]);statsData.byType.forEach(t=>rows.push([t.task_type,t.orders,t.avgUsed==null?"":t.avgUsed,t.plannedAvg==null?"":t.plannedAvg,hrs(t.minutes)]));rows.push([]);rows.push(["日期","接单","完成"]);statsData.byDay.forEach(x=>rows.push([x.date,x.orders,x.done]));const csv="﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`团播派工统计_${statsRange}_${statsData.to}.csv`;a.click();URL.revokeObjectURL(url)}
+function teamRequest(){if(reqGroup===null||!curGroups().some(g=>g.name===reqGroup))reqGroup=defaultGroup();if(!reqTeam||!(state.teams||[]).some(t=>t.name===reqTeam))reqTeam=((state.teams||[])[0]||{}).name||"";const canAssign=me.role==="admin"||me.lead;const gsla=slaForGroup(reqGroup);if(reqTask===null)reqTask=(gsla[0]||{}).task_type||"";const team=(state.teams||[]).find(t=>t.name===reqTeam)||state.teams[0];const sla=gsla.find(s=>s.task_type===reqTask)||(reqTask?{task_type:reqTask,minutes:30,buffer:0,custom:true}:gsla[0]);const gseg=reqGroupTabs();const taskCustomSel=!!reqTask&&!gsla.some(s=>s.task_type===reqTask);const taskOpts=gsla.map(item=>`<option value="${esc(item.task_type)}"${item.task_type===reqTask?" selected":""}>${esc(item.task_type)}</option>`).join("")+`<option value="__custom__"${taskCustomSel?" selected":""}>✎ 自定义任务…</option>`;const asgOpts=reqAssigneeOptions();return `<div class="request-layout"><section class="panel req-form"><div class="panel-body"><div id="reqGroupSeg">${gseg}</div><div class="req-grp"><div class="fr"><label>直播间</label><select id="requestTeam">${state.teams.map(item=>`<option value="${esc(item.name)}" ${item.name===reqTeam?"selected":""}>${esc(item.name)} · ${esc(item.room)}</option>`).join("")}</select></div><div class="fr"><label for="requestTask">任务</label><select id="requestTask">${taskOpts}</select></div>${canAssign?`<div class="fr"><label for="requestAssignee">指派给</label><select id="requestAssignee">${asgOpts}</select></div>`:""}</div><input id="requestTaskCustom" autocomplete="off" placeholder="输入自定义任务名" value="${taskCustomSel?esc(reqTask):''}" style="display:${taskCustomSel?'block':'none'};margin-top:8px;width:100%"><div class="req-sec" id="whenBlock">${whenBlockHtml()}</div><div class="req-sec"><label class="blk" id="requestNoteLabel">${reqGroup==="设备组"?"问题描述（设备组必填）":"备注 / 原因（选填）"}</label><textarea id="requestNote" rows="3" placeholder="${reqGroup==="设备组"?"必填：说清楚设备出了什么问题，例如：声卡没声音 / 推流掉线 / 机位画面发绿…":"详细说明需求或原因，例如：主播反馈画面卡顿，需要马上处理…"}"></textarea><div class="media-pick" style="margin-top:10px"><label class="text-btn media-btn">${icon("volume-2",true)}<span id="audName">传音频</span><input id="requestAudio" type="file" accept="audio/*" class="file-over"></label><label class="text-btn media-btn">${icon("video",true)}<span id="vidName">传视频</span><input id="requestVideo" type="file" accept="video/*" class="file-over"></label><span id="mediaName" class="dim">语音 / 视频说明，选填</span></div></div><div class="req-sum" id="reqSummary"></div><button class="primary req-go" id="placeOrder">${icon("send")}下单 · ${esc(reqGroup)}</button></div></section><aside class="panel preview" id="requestPreview">${requestPreview(team,sla)}</aside></div><div style="height:14px"></div>${ordersPanel(sortedOrders(state.orders),canAssign?"dispatch":"view",canAssign?"工单队列":"今日处理进度")}`}
+function whenBlockHtml(){if(reqWhen!=="now"&&reqWhen!=="book")reqWhen="now";if(reqDate===null)reqDate=todayStr();if(reqAt===null)reqAt="18:00";if(reqEnd===null)reqEnd=addMinStr(reqAt,60);const tab=(id,ic,label)=>`<button type="button" class="filter ${reqWhen===id?"active":""}" data-when="${id}">${icon(ic,true)}${label}</button>`;const days=[[0,"今天"],[1,"明天"],[2,"后天"]];const book=reqWhen==="book"?`<div class="book-panel"><div class="day-quick">${days.map(([n,l])=>{const ds=addDaysStr(n);return `<button type="button" class="chip ${reqDate===ds?"active":""}" data-day="${n}">${l}${Number(ds.slice(8,10))}日</button>`}).join("")}</div><div class="book-fields ${teamLocked()?"":"three"}"><div class="bf"><label>日期</label><input type="date" id="reqDate" value="${esc(reqDate)}" min="${todayStr()}"></div><div class="bf"><label>开始</label><input type="time" id="reqAt" value="${esc(reqAt)}"></div>${teamLocked()?"":`<div class="bf"><label>结束</label><input type="time" id="reqEnd" value="${esc(reqEnd)}"></div>`}</div>${me&&me.role==="team"?(()=>{const g=Number(ruleV("grace_min",15)),c=Number(ruleV("team_cap",2)),dcap=Number(ruleV("team_day_min",240));const dsel=reqDate||todayStr();const used=(state.orders||[]).filter(o=>o.team===reqTeam&&o.date===dsel&&o.booked&&o.status!=="cancelled").reduce((s,o)=>s+(o.minutes||0),0);const left=Math.max(0,dcap-used);const dl=dsel===todayStr()?"今天":dsel===addDaysStr(1)?"明天":dsel===addDaysStr(2)?"后天":dsel.slice(5);const lines=[];if(teamLocked())lines.push(`时长＝任务标准工时,自动排到结束(不能自选时长)`);if(c>0)lines.push(`每团最多 <b>${c}</b> 个「未开始」的预约,用掉或取消才能再约`);if(dcap>0)lines.push(`每团每天预约上限 <b>${dcap%60?dcap+"分钟":(dcap/60)+"小时"}</b> · ${esc(reqTeam||"本团")}${dl}已约 ${used} 分钟,<b>还能约 ${left} 分钟</b>`);if(g>0)lines.push(`到点 <b>${g}</b> 分钟没点「开始」,自动释放给别的团`);return lines.length?`<div class="rulebox"><div class="rulebox-t">${icon("shield-check",true)}预约规则(对所有团一视同仁)</div>${lines.map(l=>`<div class="rulebox-l">· ${l}</div>`).join("")}</div>`:""})():""}${teamLocked()?"":`<div class="qs-dur wb-dur">${[60,120,180,240,360].map(m=>{const cur=(((toMinutes(reqEnd)-toMinutes(reqAt))%1440)+1440)%1440;return `<button type="button" data-rdur="${m}" class="${cur===m?"active":""}">${m%60===0?m/60+"小时":m+"分"}</button>`}).join("")}</div>`}</div>`:"";const now=reqWhen==="now"?`<p class="when-hint urgent">${icon("zap",true)}到岗＝现在，按<b>紧急</b>派发并强提醒。</p>`:"";return `<label>到岗时间</label><div class="filters when-tabs">${tab("now","zap","立即")}${tab("book","calendar-clock","预约")}</div>${now}${book}`}
+function requestPreview(team,sla){if(!team||!sla)return empty("calculator","暂无排期数据");if(reqWhen==="now")return `<div class="section-label">到岗时间</div><div class="preview-time urgent">现在</div><span class="tag s-busy"><span class="status-dot"></span>紧急工单</span><dl><dt>直播间</dt><dd>${esc(team.room)}</dd><dt>任务类型</dt><dd>${esc(sla.task_type)}${sla.custom?' · 自定义':''}</dd><dt>标准工时</dt><dd>${sla.minutes} 分钟</dd></dl>`;if(reqWhen==="book"){const d=reqDate||todayStr();const lbl=d===todayStr()?"今天":d===addDaysStr(1)?"明天":d===addDaysStr(2)?"后天":d.slice(5);const bdur=reqAt&&reqEnd?((((toMinutes(reqEnd)-toMinutes(reqAt))%1440)+1440)%1440):0;return `<div class="section-label">预约时间段</div><div class="preview-time">${esc(reqAt||"--:--")}–${esc(reqEnd||"--:--")}</div><span class="tag s-working"><span class="status-dot"></span>${lbl} · ${esc(team.room)}</span><dl><dt>日期</dt><dd>${esc(d)}</dd><dt>任务类型</dt><dd>${esc(sla.task_type)}${sla.custom?' · 自定义':''}</dd><dt>时长</dt><dd>${bdur?bdur+" 分钟":sla.minutes+" 分钟"}</dd></dl>`}return "";}
+function teamOrders(){return ordersPanel(sortedOrders(state.orders),"view","今日工单","按到岗时间排序")}
+
+function staffWork(){const self=state.staff.find(item=>item.open_id===me.open_id)||me;const working=sortedOrders(state.orders.filter(item=>item.assignee_id===me.open_id&&item.status==="working"));const done=state.orders.filter(item=>item.assignee_id===me.open_id&&item.status==="done");return `<div class="grid grid-2"><section class="panel"><div class="panel-head"><div><h2>我的状态</h2><p>${esc(self.shift||"未排班")} · 今日完成 ${done.length} 张</p></div>${availTag(self)}</div><div class="panel-body"><div class="status-control">${[["free","空闲"],["rest","小休"]].map(([status,label])=>`<button class="status-key ${STATUS[status].className} ${status===self.status?"active":""}" data-status="${status}" ${working.length?"disabled":""}><span class="status-dot"></span>${label}</button>`).join("")}</div></div></section>${working[0]?`<section class="panel current-job"><div class="current-job-top"><div><div class="section-label">当前任务</div><h2>${esc(working[0].team)}</h2></div>${working[0].started_at?`<span class="tag s-working"><span class="status-dot"></span>计时中</span>`:`<span class="tag s-wait"><span class="status-dot"></span>待开始</span>`}</div><div class="current-job-meta"><span>${icon("map-pin",true)}${esc(working[0].room)}</span><span>${icon("clock-3",true)}${esc(working[0].arrive)} 到岗</span><span>${icon("wrench",true)}${esc(working[0].task_type)}</span></div><div class="current-job-actions">${working[0].started_at?`<div class="big-timer">${icon("timer",true)}<span class="tmr" data-since="${esc(working[0].started_at)}">${fmtDur((Date.now()-tsToMs(working[0].started_at))/1000)}</span></div><button class="primary" data-complete="${working[0].id}">${icon("check")}完成任务</button>`:`<button class="primary" data-start="${working[0].id}">${icon("play")}开始任务</button><span class="dim start-hint">点“开始任务”后自动计时</span>`}</div></section>`:`<section class="panel">${empty("circle-check","当前没有进行中的任务")}</section>`}</div><div style="height:14px"></div>${ordersPanel(working.slice(1),"mine","后续任务")}`}
+function openOrders(){const self=state.staff.find(item=>item.open_id===me.open_id)||me;const a=personAvail(self);const canTake=a.assignable;const hint=a.label==="实习"?"实习成员不参与接单":a.label==="请假"?"今日请假，不接单":a.label==="下班"?"当前不在班次时间，无法接单":a.label==="忙碌"?"有进行中的任务，完成后可再接单":"切换为“空闲”后可以接单";const open=sortedOrders(state.orders.filter(item=>item.status==="wait"));return `${!canTake?`<div class="banner info">当前「${a.label}」——${hint}</div>`:""}${ordersPanel(open,canTake?"staff":"view","可接工单","按到岗时间排序")}`}
+function crewBoard(){return `${groupTabsHtml()}<div class="overview-grid"><div class="stack">${schedulePanel()}</div><aside class="rail stack">${shiftOverviewPanel()}${crewPanel("人员状态")}</aside></div>`}
+
+function bindShell(){document.querySelectorAll("[data-page]").forEach(button=>button.onclick=()=>{page=button.dataset.page;localStorage.setItem(`dispatch_page_${me.role}`,page);renderApp()});const saved=localStorage.getItem(`dispatch_page_${me.role}`);if(saved&&navFor(navKey()).some(item=>item.id===saved)&&!document.querySelector(`[data-page="${saved}"]`)?.classList.contains("active")){page=saved;renderApp();return}document.getElementById("refresh").onclick=()=>load();const alertBtn=document.getElementById("alertBtn");if(alertBtn)alertBtn.onclick=()=>{unlockAudio();openAlertSettings()};const themeBtn=document.getElementById("themeToggle");if(themeBtn)themeBtn.onclick=()=>{cycleTheme();themeBtn.innerHTML=icon(THEME_META[themePref].icon);themeBtn.title=THEME_META[themePref].label;drawIcons()};document.getElementById("logout").onclick=async()=>{if(await confirmBox("退出当前账号？","退出"))location.href="/logout"};const claim=document.getElementById("claimAdmin");if(claim)claim.onclick=async()=>{await apiPost("claim-admin",{code:document.getElementById("bootstrapCode").value.trim()});showToast("管理员权限已生效");load()};bindActions()}
+function bindActions(){document.querySelectorAll("[data-detail]").forEach(b=>b.onclick=()=>showDetail(b));document.querySelectorAll("[data-auditcat]").forEach(b=>b.onclick=()=>{auditCat=b.dataset.auditcat;renderApp()});{const gmSel=document.getElementById("gateMode");if(gmSel)gmSel.onchange=async()=>{try{await apiPost("setting",{key:"gate_mode",value:gmSel.value});showToast("登录准入已更新");load()}catch(e){}};const di=document.getElementById("deptIds");if(di)di.onchange=async()=>{try{await apiPost("setting",{key:"allow_dept_ids",value:di.value});showToast("部门ID已保存")}catch(e){}}}document.querySelectorAll("[data-navvis]").forEach(cb=>cb.onchange=async()=>{const role=cb.dataset.navvis;const ids=[...document.querySelectorAll(`[data-navvis="${role}"]`)].filter(x=>x.checked).map(x=>x.value);if(!ids.length){cb.checked=true;showToast("至少保留一个页面");return}try{await apiPost("setting",{key:"nav_"+role,value:ids.join(",")});showToast("页面可见性已更新,对应角色刷新后生效");load()}catch(e){cb.checked=!cb.checked}});document.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{await apiPost("save",{entity:"users",record:{open_id:b.dataset.approve,approved:"1"}});showToast("已放行,该成员现在可以正常使用");load()});{const po=document.getElementById("purgeOrders");if(po)po.onclick=async()=>{const v=await promptBox("危险操作:将删除全部工单(不可恢复)。输入「清空」两个字确认","清空");if(v===null)return;try{await apiPost("purge",{what:"orders",confirm:v.trim()});showToast("全部工单已清空");load()}catch(e){}};const pa=document.getElementById("purgeAudit");if(pa)pa.onclick=async()=>{const v=await promptBox("危险操作:将删除全部审计记录(不可恢复)。输入「清空」两个字确认","清空");if(v===null)return;try{await apiPost("purge",{what:"audit",confirm:v.trim()});auditRows=null;showToast("审计日志已清空");load()}catch(e){}}}document.querySelectorAll("[data-range]").forEach(b=>b.onclick=()=>{statsRange=b.dataset.range;statsData=null;statsPerson=null;statsPersonData=null;renderApp()});document.querySelectorAll("[data-statsgrp]").forEach(b=>b.onclick=()=>{statsGroup=b.dataset.statsgrp;statsData=null;statsPerson=null;statsPersonData=null;renderApp()});document.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>{const oid=b.dataset.person;if(statsPerson===oid){statsPerson=null;statsPersonData=null}else{statsPerson=oid;statsPersonData=null;loadStatsPerson(oid)}renderApp()});const statsCsvBtn=document.getElementById("statsCsv");if(statsCsvBtn)statsCsvBtn.onclick=exportStatsCsv;document.querySelectorAll("[data-filter]").forEach(button=>button.onclick=()=>{window.dispatchFilter=button.dataset.filter;renderApp()});document.querySelectorAll("[data-boardgrp]").forEach(button=>button.onclick=()=>{boardGrp=button.dataset.boardgrp;renderApp()});document.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>openQuickOrder(b.dataset.quick));bindDgDrag();document.querySelectorAll("[data-book]").forEach(b=>b.onclick=()=>{if(window.__dgSwallow){window.__dgSwallow=0;return}const parts=b.dataset.book.split("|");let at=parts[2];if(parts[1]===todayStr()){const nzf=m=>m<300?m+1440:m;const rn=nzf(nowMinutes());if(nzf(toMinutes(at))<rn){const mm=rn%1440;at=String(Math.floor(mm/60)).padStart(2,"0")+":"+String(mm%60).padStart(2,"0");}}let end;const seRaw=parts[3]!=null?toMinutes(parts[3]):null;if(seRaw!=null){const nzf=m=>m<300?m+1440:m;const am=nzf(toMinutes(at)||0);const seN=nzf(seRaw);const e2=Math.min(am+60,seN);if(e2-am<10){showToast("离下班不足 10 分钟,这个时段约不了了");return}const mm=e2%1440;end=String(Math.floor(mm/60)).padStart(2,"0")+":"+String(mm%60).padStart(2,"0")}openQuickOrder(parts[0],{date:parts[1],at,end})});{const qn=document.getElementById("quickNew");if(qn)qn.onclick=()=>openQuickOrder("")}document.querySelectorAll("[data-goto]").forEach(b=>b.onclick=()=>{page=b.dataset.goto;renderApp()});document.querySelectorAll("[data-schedview]").forEach(b=>b.onclick=()=>{const v=b.dataset.schedview;if(v[0]==="d"&&v.length===2){schedView="day";schedDate=addDaysStr(Number(v[1])||0)}else schedView=v;renderApp()});document.querySelectorAll("[data-day2]").forEach(b=>b.onclick=()=>{schedDate=b.dataset.day2;schedView="day";renderApp()});document.querySelectorAll("[data-cfggrp]").forEach(button=>button.onclick=()=>{cfgGrp=button.dataset.cfggrp;renderApp()});document.querySelectorAll("[data-cfgsec]").forEach(b=>b.onclick=()=>{cfgSec=b.dataset.cfgsec;renderApp()});document.querySelectorAll(".settings-wrap>.panel").forEach(p=>{const t=(p.querySelector("h2")||{}).textContent||"";p.style.display=t===cfgSec?"":"none"});document.querySelectorAll("[data-assign]").forEach(button=>button.onclick=async()=>{const select=document.querySelector(`[data-assignee="${button.dataset.assign}"]`);await apiPost("assign",{order_id:Number(button.dataset.assign),user_id:select.value});showToast("派单成功");load()});document.querySelectorAll("[data-take]").forEach(button=>button.onclick=async()=>{await apiPost("assign",{order_id:Number(button.dataset.take)});showToast("接单成功");load()});document.querySelectorAll("[data-start]").forEach(button=>button.onclick=async()=>{await apiPost("start",{order_id:Number(button.dataset.start)});showToast("已开始，正在计时");load()});document.querySelectorAll("[data-complete]").forEach(button=>button.onclick=()=>completeOrder(button.dataset.complete));document.querySelectorAll("[data-status]").forEach(button=>button.onclick=async()=>{await apiPost("tech-status",{status:button.dataset.status,task:""});showToast("状态已同步");load()});document.querySelectorAll("[data-user]").forEach(control=>control.onchange=async()=>{const v=control.type==="checkbox"?(control.checked?"1":"0"):control.value;await apiPost("save",{entity:"users",record:{open_id:control.dataset.user,[control.dataset.field]:v}});showToast("人员信息已保存");load()});document.querySelectorAll("[data-identity]").forEach(sel=>sel.onchange=async()=>{const m={team:{role:"team"},intern:{role:"staff",intern:"1",lead:"0"},staff:{role:"staff",intern:"0",lead:"0"},lead:{role:"staff",intern:"0",lead:"1"},admin:{role:"admin",intern:"0",lead:"0"}};await apiPost("save",{entity:"users",record:{open_id:sel.dataset.identity,...(m[sel.value]||{})}});showToast("身份已更新");load()});document.querySelectorAll("[data-leave]").forEach(button=>button.onclick=async()=>{const on=button.dataset.on==="1";await apiPost("save",{entity:"users",record:{open_id:button.dataset.leave,leave_until:on?"":todayStr()}});showToast(on?"已销假":"已设为今日请假");load()});document.querySelectorAll("[data-rest]").forEach(button=>button.onclick=async()=>{await apiPost("save",{entity:"users",record:{open_id:button.dataset.rest,status:""}});showToast("已结束小休");load()});document.querySelectorAll("[data-entity]").forEach(control=>control.onchange=async()=>{const v=control.type==="checkbox"?(control.checked?"1":"0"):control.value;await apiPost("save",{entity:control.dataset.entity,record:{id:Number(control.dataset.id),[control.dataset.field]:v}});showToast("配置已保存");load()});document.querySelectorAll("[data-delete]").forEach(button=>button.onclick=async()=>{if(!await confirmBox("确定删除这条记录？","删除",true))return;await apiPost("remove",{entity:button.dataset.delete,id:Number(button.dataset.id)});showToast("已删除");load()});const addTeam=document.getElementById("addTeam");if(addTeam)addTeam.onclick=async()=>{const name=document.getElementById("newTeam").value.trim();if(!name)return showToast("请填写团队名");await apiPost("save",{entity:"teams",record:{name,room:document.getElementById("newRoom").value.trim()}});showToast("团队已添加");load()};const addSla=document.getElementById("addSla");if(addSla)addSla.onclick=async()=>{const task=document.getElementById("newTask").value.trim();if(!task)return showToast("请填写任务类型");await apiPost("save",{entity:"sla",record:{task_type:task,minutes:document.getElementById("newMinutes").value.trim(),buffer:document.getElementById("newBuffer").value.trim(),note:"",grp:cfgGrp}});showToast("规则已添加");load()};const addShift=document.getElementById("addShift");if(addShift)addShift.onclick=async()=>{const name=document.getElementById("newShift").value.trim();if(!name)return showToast("请填写班次名");await apiPost("save",{entity:"shifts",record:{name,start:document.getElementById("newShiftStart").value.trim(),end:document.getElementById("newShiftEnd").value.trim(),sort:(state.shifts||[]).length+1}});showToast("班次已添加");load()};const addGroup=document.getElementById("addGroup");if(addGroup)addGroup.onclick=async()=>{const name=document.getElementById("newGrp").value.trim();if(!name)return showToast("请填写组名");await apiPost("save",{entity:"groups",record:{name,color:document.getElementById("newGrpColor").value||"#0A84FF",sort:Number(document.getElementById("newGrpSort").value)||((state.groups||[]).length+1)}});showToast("分组已添加");load()};const rOn=document.getElementById("setReminderOn");if(rOn)rOn.onchange=async()=>{await apiPost("setting",{key:"reminder_on",value:rOn.checked?"1":"0"});showToast(rOn.checked?"已开启日程提醒":"已关闭日程提醒")};const rMin=document.getElementById("setReminderMin");if(rMin)rMin.onchange=async()=>{await apiPost("setting",{key:"reminder_minutes",value:rMin.value});showToast("提前提醒已保存")};const rUrg=document.getElementById("setUrgentOn");if(rUrg)rUrg.onchange=async()=>{await apiPost("setting",{key:"urgent_on",value:rUrg.checked?"1":"0"});showToast(rUrg.checked?"已开启加急必响":"已关闭加急必响")};document.querySelectorAll("[data-rule]").forEach(cb=>cb.onchange=async()=>{try{await apiPost("setting",{key:cb.dataset.rule,value:cb.checked?"1":"0"});showToast("规则已更新");load()}catch(e){cb.checked=!cb.checked}});document.querySelectorAll("[data-rulenum]").forEach(inp=>inp.onchange=async()=>{try{await apiPost("setting",{key:inp.dataset.rulenum,value:inp.value});showToast("规则已更新");load()}catch(e){}});const teamSelect=document.getElementById("requestTeam"),taskSelect=document.getElementById("requestTask"),taskCustom=document.getElementById("requestTaskCustom");const updatePreview=()=>{if(!teamSelect||!taskSelect)return;const team=state.teams.find(item=>item.name===teamSelect.value);const tv=taskSelect.value==="__custom__"?((taskCustom&&taskCustom.value)||"").trim():(taskSelect.value||"").trim();let sla=state.sla.find(item=>item.task_type===tv&&item.grp===reqGroup);if(!sla&&tv)sla={task_type:tv,minutes:30,buffer:0,custom:true};if(teamLocked()&&reqWhen==="book"&&sla){reqEnd=addMinStr(reqAt||"18:00",Math.max(10,sla.minutes||30));}const pv=document.getElementById("requestPreview");if(pv)pv.innerHTML=requestPreview(team,sla);const sm=document.getElementById("reqSummary");if(sm&&team&&sla){const durM=reqWhen==="book"&&reqAt&&reqEnd?(((toMinutes(reqEnd)-toMinutes(reqAt))%1440)+1440)%1440:0;const durTx=durM?(durM<60?`${durM}分钟`:durM%60===0?`${durM/60}小时`:`${Math.floor(durM/60)}小时${durM%60}分`):"";const lbl=reqWhen==="now"?"立即 · 紧急":`${(reqDate===todayStr()?"今天":reqDate===addDaysStr(1)?"明天":reqDate===addDaysStr(2)?"后天":(reqDate||"").slice(5))} ${reqAt||""}–${reqEnd||""}`;sm.innerHTML=`${icon("clock",true)} 到岗 <b>${esc(lbl)}</b> · ${esc(team.room)} · ${reqWhen==="book"&&durTx?`共${durTx}`:`工时${sla.minutes}分`}`;drawIcons()}refreshReqAssignee()};document.querySelectorAll("[data-reqgroup]").forEach(b=>b.onclick=()=>{reqGroup=b.dataset.reqgroup;document.querySelectorAll("[data-reqgroup]").forEach(x=>x.classList.toggle("active",x.dataset.reqgroup===reqGroup));const gopts=slaForGroup(reqGroup);reqTask=(gopts[0]||{}).task_type||"";const ts=document.getElementById("requestTask");if(ts)ts.innerHTML=gopts.map(item=>`<option value="${esc(item.task_type)}"${item.task_type===reqTask?" selected":""}>${esc(item.task_type)}</option>`).join("")+`<option value="__custom__">✎ 自定义任务…</option>`;const tc=document.getElementById("requestTaskCustom");if(tc)tc.style.display="none";refreshReqAssignee();const pb=document.getElementById("placeOrder");if(pb){pb.innerHTML=icon("send")+"下单 · "+esc(reqGroup);drawIcons()}const nl=document.getElementById("requestNoteLabel"),ne=document.getElementById("requestNote");if(nl)nl.textContent=reqGroup==="设备组"?"问题描述（设备组必填）":"备注 / 原因（选填）";if(ne)ne.placeholder=reqGroup==="设备组"?"必填：说清楚设备出了什么问题，例如：声卡没声音 / 推流掉线 / 机位画面发绿…":"详细说明需求或原因，例如：主播反馈画面卡顿，需要马上处理…";updatePreview()});if(teamSelect)teamSelect.onchange=()=>{reqTeam=teamSelect.value;updatePreview()};if(taskSelect){const applyTask=()=>{if(taskSelect.value==="__custom__"){if(taskCustom)taskCustom.style.display="block";reqTask=((taskCustom&&taskCustom.value)||"").trim()}else{if(taskCustom)taskCustom.style.display="none";reqTask=taskSelect.value}updatePreview()};taskSelect.onchange=()=>{if(taskSelect.value==="__custom__"&&taskCustom)setTimeout(()=>taskCustom.focus(),0);applyTask()};if(taskCustom)taskCustom.oninput=()=>{reqTask=(taskCustom.value||"").trim();updatePreview()}}const bindWhen=()=>{document.querySelectorAll("[data-when]").forEach(b=>b.onclick=()=>{reqWhen=b.dataset.when;renderWhen()});document.querySelectorAll("[data-day]").forEach(b=>b.onclick=()=>{reqDate=addDaysStr(Number(b.dataset.day));renderWhen()});document.querySelectorAll("[data-rdur]").forEach(b=>b.onclick=()=>{reqEnd=addMinStr(reqAt||"18:00",Number(b.dataset.rdur));renderWhen()});const rd=document.getElementById("reqDate");if(rd)rd.onchange=()=>{reqDate=rd.value||todayStr();updatePreview()};const rt=document.getElementById("reqAt");if(rt)rt.onchange=()=>{reqAt=rt.value||"18:00";updatePreview()};const re=document.getElementById("reqEnd");if(re)re.onchange=()=>{reqEnd=re.value||addMinStr(reqAt,60);updatePreview()}};const renderWhen=()=>{const wb=document.getElementById("whenBlock");if(!wb)return;wb.innerHTML=whenBlockHtml();bindWhen();updatePreview();drawIcons()};bindWhen();if(teamSelect)updatePreview();const audInput=document.getElementById("requestAudio"),vidInput=document.getElementById("requestVideo");const isBiange=()=>{const tv=taskSelect?(taskSelect.value==="__custom__"?((taskCustom&&taskCustom.value)||""):taskSelect.value):"";return reqGroup==="灯光组"&&(tv||"").includes("编歌")&&String(ruleV("biange_media","1"))!=="0"};const updMediaHint=()=>{const el=document.getElementById("mediaName");if(!el)return;const a=audInput&&audInput.files[0],v=vidInput&&vidInput.files[0];const an=document.getElementById("audName"),vn=document.getElementById("vidName");if(an)an.textContent=a?("✓ "+a.name.slice(0,12)):"传音频";if(vn)vn.textContent=v?("✓ "+v.name.slice(0,12)):"传视频";if(a&&v){el.textContent="音频+视频都已选好";el.classList.remove("req-need")}else if(a||v){el.textContent=isBiange()?(a?"已选音频 · 最好再补个视频":"已选视频 · 最好再补个音频"):"已选好，随单上传";el.classList.remove("req-need")}else if(isBiange()){el.textContent="编歌必传：歌曲音频或视频，最好都传";el.classList.add("req-need")}else{el.textContent="语音 / 视频说明，选填";el.classList.remove("req-need")}};if(audInput)audInput.onchange=updMediaHint;if(vidInput)vidInput.onchange=updMediaHint;if(taskSelect){const _tso=taskSelect.onchange;taskSelect.onchange=e=>{if(_tso)_tso(e);updMediaHint()}}if(taskCustom){const _tco=taskCustom.oninput;taskCustom.oninput=e=>{if(_tco)_tco(e);updMediaHint()}}updMediaHint();
+const place=document.getElementById("placeOrder");if(place)place.onclick=async()=>{const asg=document.getElementById("requestAssignee");const noteEl=document.getElementById("requestNote");const audEl=document.getElementById("requestAudio"),vidEl=document.getElementById("requestVideo");const taskVal=taskSelect.value==="__custom__"?((taskCustom&&taskCustom.value)||"").trim():(taskSelect.value||"").trim();if(!taskVal)return showToast(taskSelect.value==="__custom__"?"请输入自定义任务名":"请选择任务");if(reqGroup==="设备组"&&String(ruleV("dev_note","1"))!=="0"&&!(noteEl&&noteEl.value.trim())){showToast("设备组下单必须填写问题描述");if(noteEl)noteEl.focus();return}if(reqGroup==="灯光组"&&taskVal.includes("编歌")&&String(ruleV("biange_media","1"))!=="0"&&!(audEl&&audEl.files[0])&&!(vidEl&&vidEl.files[0])){showToast("编歌必须上传歌曲音频或视频（最好都传）");return}const body={team:teamSelect.value,task:taskVal,group:reqGroup,when:reqWhen};if(reqWhen==="book"){const rd=document.getElementById("reqDate"),rt=document.getElementById("reqAt"),re=document.getElementById("reqEnd");body.date=rd&&rd.value?rd.value:reqDate;body.at=rt&&rt.value?rt.value:reqAt;if(!teamLocked()){const ev=re&&re.value?re.value:reqEnd;if(!ev){showToast("请选择结束时间");return}body.end=ev}}if(asg&&asg.value)body.assignee=asg.value;if(noteEl&&noteEl.value.trim())body.note=noteEl.value.trim();const af=audEl&&audEl.files[0],vf=vidEl&&vidEl.files[0];const orig=place.innerHTML;const upOne=async f=>{const up=await fetch("/api/upload",{method:"POST",headers:{"Content-Type":f.type||"application/octet-stream"},body:f});const ur=await up.json().catch(()=>({ok:false,msg:"上传失败"}));if(!ur.ok)throw Object.assign(new Error(ur.msg||"上传失败"),{up:1});return ur};try{if(af||vf){place.disabled=true;place.textContent="上传中…";if(af){const ur=await upOne(af);body.media=ur.url;body.media_kind=ur.kind}if(vf){const ur=await upOne(vf);if(body.media){body.media2=ur.url;body.media2_kind=ur.kind}else{body.media=ur.url;body.media_kind=ur.kind}}}place.disabled=true;place.textContent="提交中…";await apiPost("order",body);showToast(asg&&asg.value?"已下单并派工":"工单已提交");load()}catch(e){place.disabled=false;place.innerHTML=orig;drawIcons();if(e&&e.up)showToast(e.message)}}}
+
+["pointerdown","keydown","touchstart"].forEach(ev=>window.addEventListener(ev,unlockAudio,{once:true}));load();setInterval(()=>load(true),5000);
+</script>
+</body>
+</html>

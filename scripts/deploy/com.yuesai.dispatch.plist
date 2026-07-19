@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.yuesai.dispatch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>-u</string>
+        <string>/Users/pc/github 项目/灯光排期软件/app/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/pc/github 项目/灯光排期软件</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/pc/Library/Logs/dispatch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/pc/Library/Logs/dispatch.log</string>
+</dict>
+</plist>
