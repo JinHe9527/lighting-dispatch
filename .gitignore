@@ -8,3 +8,4 @@ __pycache__/
 app/data.json
 app/media/
 app/backups/
+.codex-local/

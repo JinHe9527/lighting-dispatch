@@ -15,6 +15,7 @@
   DISPATCH_BASE_URL                        HTTPS 对外地址(OAuth 回调用)
   DISPATCH_HOST / DISPATCH_PORT            默认 0.0.0.0 / 8848
 """
+import ipaddress
 import json
 import logging
 import os
@@ -2408,6 +2409,22 @@ RATE_LOCK = threading.Lock()
 RATE_HITS = {}
 
 
+def request_client_ip(peer, forwarded_for=""):
+    """只信任本机反向代理传入的首个客户端地址。"""
+    try:
+        peer_address = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    if not peer_address.is_loopback or not forwarded_for:
+        return peer
+    candidate = forwarded_for.split(",", 1)[0].strip()
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return peer
+    return candidate
+
+
 def rate_limited(ip, path):
     """简易限流:每 IP 每分钟普通请求 300 次 / 登录相关 30 次,挡住脚本乱打与暴力尝试。"""
     is_auth = path.startswith("/auth/")
@@ -2469,6 +2486,12 @@ class Handler(BaseHTTPRequestHandler):
                 if k == name:
                     return v
         return ""
+
+    def _client_ip(self):
+        return request_client_ip(
+            self.client_address[0],
+            self.headers.get("X-Forwarded-For", ""),
+        )
 
     def _user(self):
         return session_user(self._cookie("sid"))
@@ -2609,7 +2632,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            limit_key = self._cookie("sid") or self.client_address[0]
+            limit_key = self._cookie("sid") or self._client_ip()
             if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path in ("/", "/index.html"):
@@ -2780,7 +2803,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            limit_key = self._cookie("sid") or self.client_address[0]
+            limit_key = self._cookie("sid") or self._client_ip()
             if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path == "/api/upload":

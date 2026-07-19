@@ -1,0 +1,25 @@
+[Unit]
+Description=无忧排班服务
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=dispatch
+Group=dispatch
+WorkingDirectory=/opt/wuyou-dispatch
+EnvironmentFile=/etc/wuyou-dispatch.env
+ExecStart=/usr/bin/env DISPATCH_HOST=127.0.0.1 DISPATCH_PORT=8848 DISPATCH_TEST_MODE=0 /usr/bin/python3 /opt/wuyou-dispatch/app/server.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/wuyou-dispatch/app
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
