@@ -79,7 +79,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0721b"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0721c"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -1279,13 +1279,11 @@ def api_state(user):
            "bootstrap_open": settings.get("bootstrap_used") != "1",
            "reminder": dict(zip(("on", "minutes"), reminder_conf())),
            "urgent_on": settings.get("urgent_on", "0") == "1",
-           "rules": {"book_lock_sla": settings.get("rule_book_lock_sla", "1"),
-                     "team_cap": settings.get("book_team_cap", "2"),
+           "rules": {"team_cap": settings.get("book_team_cap", "2"),
                      "team_day_min": settings.get("book_team_day_min", "240"),
                      "book_horizon_days": settings.get("book_horizon_days", "7"),
                      "start_early_min": settings.get("start_early_min", "30"),
                      "grace_min": settings.get("book_grace_min", "15"),
-                     "max_min": settings.get("book_max_min", "720"),
                      "dev_note": settings.get("rule_dev_note", "1"),
                      "biange_media": settings.get("rule_biange_media", "1"),
                      "done_note": settings.get("rule_done_note", "1"),
@@ -1539,12 +1537,11 @@ def do_order(user, body):
         conn.close()
         return 400, "请填写任务"
     sl = conn.execute("SELECT * FROM sla WHERE task_type=? AND grp=?", (task_type, grp)).fetchone()
-    try:
-        cm = int(body.get("minutes")) if body.get("minutes") not in (None, "") else None
-    except (TypeError, ValueError):
-        cm = None
-    sl_minutes = sl["minutes"] if sl else (cm if cm and cm > 0 else 30)  # 自定义任务默认30分钟
-    sl_buffer = sl["buffer"] if sl else 0
+    if not sl:
+        conn.close()
+        return 400, "任务类型尚未配置，请先由管理员在规则库中添加"
+    sl_minutes = sl["minutes"]
+    sl_buffer = sl["buffer"]
     when = (body.get("when") or "auto").strip()
     urgent_flag = 0
     book_minutes = None
@@ -1562,22 +1559,6 @@ def do_order(user, body):
         if not arrive:
             conn.close()
             return 400, "请填写有效的到岗时间,如 18:30"
-        end_t = first_schedule_time(body.get("end") or "")
-        if end_t:
-            dur = ((hm_to_min(end_t) - hm_to_min(arrive)) % 1440 + 1440) % 1440
-            if dur < 10:
-                conn.close()
-                return 400, "预约时长至少 10 分钟(结束需晚于开始)"
-            try:
-                bmax = max(60, min(1440, int(setting("book_max_min", "720") or 720)))
-            except (TypeError, ValueError):
-                bmax = 720
-            if dur > bmax:
-                conn.close()
-                return 400, f"预约时长不能超过 {bmax/60:g} 小时"
-            book_minutes = dur
-        else:
-            book_minutes = None
         base = arrive
     else:  # auto:按团队彩排/开播倒推(今天)
         base = first_schedule_time(tm["rehearsal"]) or first_schedule_time(tm["onair"])
@@ -1587,8 +1568,6 @@ def do_order(user, body):
         arrive = minus(base, sl_minutes + sl_buffer)
         order_date = today()
     if when == "book" and user["role"] == "team":
-        if setting("rule_book_lock_sla", "1") == "1":
-            book_minutes = None  # 规则:团队预约锁任务标准工时(防包段囤人)
         try:
             cap = int(setting("book_team_cap", "2") or 2)
         except (TypeError, ValueError):
@@ -1615,8 +1594,7 @@ def do_order(user, body):
                 conn.close()
                 return 400, (f"该团 {order_date} 已预约 {used_day} 分钟,再约 {eff} 分钟将超过"
                              f"每日上限 {daycap} 分钟（约 {daycap/60:g} 小时）——把时段留给别的团吧")
-    if book_minutes:
-        sl_minutes = book_minutes  # 预约时间段:时长=结束-开始(管理员/组长)
+    if when == "book":
         sl_buffer = 0
     assignee = (body.get("assignee") or "").strip()
     if when == "book" and assignee:
@@ -2439,7 +2417,7 @@ def do_skills(user, body):
 
 
 SETTING_WHITELIST = {"reminder_on", "reminder_minutes", "urgent_on",
-                     "rule_book_lock_sla", "book_team_cap", "book_grace_min", "book_max_min",
+                     "book_team_cap", "book_grace_min",
                      "book_team_day_min", "rule_dev_note", "rule_biange_media", "rule_done_note",
                      "book_horizon_days", "start_early_min",
                      "nav_team", "nav_staff", "gate_mode", "allow_dept_ids", "overrun_remind_min", "overrun_close_min"}
@@ -2452,7 +2430,7 @@ def do_set_setting(user, body):
     if k not in SETTING_WHITELIST:
         return 400, "不支持的设置项"
     v = str(body.get("value", "")).strip()
-    if k in ("reminder_on", "urgent_on", "rule_book_lock_sla", "rule_dev_note",
+    if k in ("reminder_on", "urgent_on", "rule_dev_note",
              "rule_biange_media", "rule_done_note"):
         v = "1" if v in ("1", "true", "on", "yes") else "0"
     elif k == "book_team_cap":
@@ -2475,11 +2453,6 @@ def do_set_setting(user, body):
             v = str(max(0, min(120, int(v or 30))))
         except ValueError:
             return 400, "提前开始分钟需为数字"
-    elif k == "book_max_min":
-        try:
-            v = str(max(60, min(1440, int(v or 720))))
-        except ValueError:
-            return 400, "分钟需为数字"
     elif k == "book_team_day_min":
         try:
             v = str(max(0, min(1440, int(v or 240))))  # 0=不限

@@ -160,20 +160,8 @@ class DispatchService:
                         return 400, f"团队账号只能预约未来 {horizon} 天内的时段"
                 if not arrive:
                     return 400, "预约开始时间无效"
-                if user["role"] == "team" and self.setting("rule_book_lock_sla", "1") == "1":
-                    duration = minutes
-                else:
-                    end_text = self._hm(body.get("end"))
-                    if not end_text:
-                        return 400, "请选择预约结束时间"
-                    start_min, end_min = business.minute_of_day(arrive), business.minute_of_day(end_text)
-                    duration = (end_min - start_min) % 1440
-                    if duration < 10:
-                        return 400, "预约时长至少 10 分钟"
-                    max_minutes = max(60, min(1440, int(self.setting("book_max_min", "720") or 720)))
-                    if duration > max_minutes:
-                        return 400, f"预约时长不能超过 {max_minutes // 60} 小时"
-                minutes, buffer = duration, 0
+                # 预约占用时长始终由任务标准工时决定。
+                buffer = 0
                 base_time = arrive
             elif when == "auto":
                 base_time = self._hm(str(team["rehearsal"] or "").split("/", 1)[0]) or self._hm(team["onair"])

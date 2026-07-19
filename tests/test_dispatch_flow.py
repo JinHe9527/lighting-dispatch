@@ -109,6 +109,35 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 409)
         self.assertIn("上限", message)
 
+    def test_booking_duration_always_uses_task_standard(self):
+        conn = server.db()
+        standard_minutes = conn.execute(
+            "SELECT minutes FROM sla WHERE grp='灯光组' AND task_type=?", (self.task,)
+        ).fetchone()["minutes"]
+        conn.close()
+
+        for user, hour, creator in (
+            (self.team, 14, "team"),
+            (self.lead, 17, "lead"),
+            (self.admin, 20, "admin"),
+        ):
+            body = self.order_body(hour, creator)
+            body["end"] = f"{(hour + 6) % 24:02d}:00"
+            self.assertEqual(server.SERVICE.order(user, body)[0], 200)
+            order = self.latest_order()
+            self.assertEqual(order["minutes"], standard_minutes)
+
+        body = self.order_body(23, "admin")
+        body.pop("end")
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        self.assertEqual(self.latest_order()["minutes"], standard_minutes)
+
+        source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("data-rdur", source)
+        self.assertNotIn('id="qsAt2"', source)
+        self.assertNotIn('id="qsDur"', source)
+        self.assertIn("预约时长按任务标准工时自动计算", source)
+
     def test_assignment_conflict_and_early_start(self):
         self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)
         first = self.latest_order()

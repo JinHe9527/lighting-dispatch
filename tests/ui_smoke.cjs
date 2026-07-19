@@ -35,6 +35,13 @@ async function login(page, profile) {
   await admin.getByText("团队可预约天数", { exact: true }).waitFor();
   await admin.locator('[data-cfgsec="数据维护"]').first().click();
   await admin.getByText("审计日志永久保留", { exact: true }).waitFor();
+  await admin.locator('.side [data-page="request"]').click();
+  await admin.locator('[data-when="book"]').click();
+  await admin.getByText("预计结束", { exact: true }).waitFor();
+  await admin.getByText("预约时长按任务标准工时自动计算，不占用额外时段。", { exact: true }).waitFor();
+  if (await admin.locator('[data-rdur], #reqEnd, #qsAt2, #qsDur').count()) {
+    throw new Error("预约界面仍存在自定义时长控件");
+  }
   await admin.locator('[data-page="stats"]').first().click();
   await admin.getByText("每日接单趋势", { exact: true }).waitFor();
   await admin.screenshot({ path: "/tmp/dispatch-admin-smoke.png", fullPage: true });
