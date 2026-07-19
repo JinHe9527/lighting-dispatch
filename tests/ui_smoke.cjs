@@ -39,6 +39,36 @@ async function login(page, profile) {
   await admin.getByText("每日接单趋势", { exact: true }).waitFor();
   await admin.screenshot({ path: "/tmp/dispatch-admin-smoke.png", fullPage: true });
 
+  const leadContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const lead = await leadContext.newPage();
+  lead.setDefaultTimeout(10000);
+  lead.on("pageerror", error => errors.push(`lead pageerror: ${error.message}`));
+  lead.on("console", message => {
+    if (message.type() === "error") errors.push(`lead console: ${message.text()}`);
+  });
+  await login(lead, "lead");
+  process.stdout.write("Lead logged in\n");
+  const leadNavText = await lead.locator(".side .nav").innerText();
+  if (!leadNavText.includes("本组人员") || leadNavText.includes("配置") || leadNavText.includes("审计")) {
+    throw new Error(`组长端导航权限异常：${leadNavText}`);
+  }
+  await lead.locator('[data-page="crew"]').first().click();
+  await lead.getByText("本组人员 · 灯光组", { exact: true }).waitFor();
+
+  const staffContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const staff = await staffContext.newPage();
+  staff.setDefaultTimeout(10000);
+  staff.on("pageerror", error => errors.push(`staff pageerror: ${error.message}`));
+  staff.on("console", message => {
+    if (message.type() === "error") errors.push(`staff console: ${message.text()}`);
+  });
+  await login(staff, "staff");
+  process.stdout.write("Staff logged in\n");
+  const staffNavText = await staff.locator(".side .nav").innerText();
+  if (!staffNavText.includes("我的工作") || staffNavText.includes("人员") || staffNavText.includes("配置") || staffNavText.includes("审计")) {
+    throw new Error(`工作人员端导航权限异常：${staffNavText}`);
+  }
+
   const teamContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const team = await teamContext.newPage();
   team.setDefaultTimeout(10000);

@@ -9,3 +9,6 @@ app/data.json
 app/media/
 app/backups/
 .codex-local/
+node_modules/
+playwright-report/
+test-results/

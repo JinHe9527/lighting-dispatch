@@ -643,6 +643,11 @@ class DispatchService:
             if business.active_transfer(conn, order_id):
                 return 409, "该订单已经有待处理的转包申请"
             count = business.transfer_count_30d(conn, user["open_id"])
+            start, _ = business.order_bounds(order)
+            require_available_now = order["status"] == "in_progress" or bool(
+                start and start <= datetime.now() + timedelta(minutes=15)
+            )
+            urgent_window = bool(start and start - datetime.now() <= timedelta(hours=2))
             if target_id == user["open_id"]:
                 return 400, "不能转包给自己"
             if target_id:
@@ -656,11 +661,15 @@ class DispatchService:
                 ).fetchone()
                 if previous_owner:
                     return 409, "不能把订单转回历史负责人"
-                block = business.assignment_block(conn, target, order, ignore_order_id=order_id)
+                block = business.assignment_block(
+                    conn,
+                    target,
+                    order,
+                    ignore_order_id=order_id,
+                    require_available_now=require_available_now,
+                )
                 if block:
                     return 409, block
-            start, _ = business.order_bounds(order)
-            urgent_window = bool(start and start - datetime.now() <= timedelta(hours=2))
             order_transfer_count = conn.execute(
                 "SELECT COUNT(*) count FROM transfers WHERE order_id=?", (order_id,)
             ).fetchone()["count"]
@@ -788,7 +797,17 @@ class DispatchService:
             if previous_owner:
                 return 409, "历史负责人不能再次接回同一订单"
             worker = conn.execute("SELECT * FROM users WHERE open_id=?", (user["open_id"],)).fetchone()
-            block = business.assignment_block(conn, worker, order, ignore_order_id=order["id"])
+            start, _ = business.order_bounds(order)
+            require_available_now = order["status"] == "in_progress" or bool(
+                start and start <= datetime.now() + timedelta(minutes=15)
+            )
+            block = business.assignment_block(
+                conn,
+                worker,
+                order,
+                ignore_order_id=order["id"],
+                require_available_now=require_available_now,
+            )
             if block:
                 return 409, block
             stamp = business.now_iso()

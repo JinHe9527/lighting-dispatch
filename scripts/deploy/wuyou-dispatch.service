@@ -7,9 +7,12 @@ After=network-online.target
 Type=simple
 User=dispatch
 Group=dispatch
-WorkingDirectory=/opt/wuyou-dispatch
+WorkingDirectory=/opt/wuyou-dispatch/current
 EnvironmentFile=/etc/wuyou-dispatch.env
-ExecStart=/usr/bin/env DISPATCH_HOST=127.0.0.1 DISPATCH_PORT=8848 DISPATCH_TEST_MODE=0 /usr/bin/python3 /opt/wuyou-dispatch/app/server.py
+Environment=DISPATCH_DATA_DIR=/var/lib/wuyou-dispatch
+Environment=DISPATCH_BACKUP_DIR=/var/backups/wuyou-dispatch
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/env DISPATCH_HOST=127.0.0.1 DISPATCH_PORT=8848 DISPATCH_TEST_MODE=0 /usr/bin/python3 /opt/wuyou-dispatch/current/app/server.py
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
@@ -17,8 +20,8 @@ UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
-ProtectSystem=full
-ReadWritePaths=/opt/wuyou-dispatch/app
+ProtectSystem=strict
+ReadWritePaths=/var/lib/wuyou-dispatch /var/backups/wuyou-dispatch
 LimitNOFILE=65536
 
 [Install]

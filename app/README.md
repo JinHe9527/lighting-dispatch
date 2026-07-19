@@ -18,7 +18,27 @@
 | `.env` | 飞书密钥和公网地址，部署更新不得覆盖 |
 | `app\media` | 业务附件，部署更新不得覆盖 |
 
-更新代码后双击 `app\重启服务-windows.bat`。启动时会先在线备份正式数据库，再执行原地迁移；备份保存在 `app\backups`，最多保留最近 30 份。
+更新代码后双击 `app\重启服务-windows.bat`。启动时会先在线备份正式数据库和媒体副本，再执行原地迁移；数据库备份最多保留最近 30 份。
+
+## 腾讯云 Linux 正式部署
+
+Linux 使用相互隔离的目录：
+
+| 目录 | 权限与内容 |
+|---|---|
+| `/opt/wuyou-dispatch/releases` | `root` 持有的只读版本 |
+| `/opt/wuyou-dispatch/current` | 原子指向当前版本的链接 |
+| `/var/lib/wuyou-dispatch` | 运行用户可写的数据库、媒体和日志 |
+| `/var/backups/wuyou-dispatch` | 数据库快照和媒体备份 |
+| `/var/backups/wuyou-dispatch-config` | `root` 专用的配置备份 |
+
+把部署包上传到 `/home/ubuntu/wuyou-dispatch-release` 后执行：
+
+```bash
+bash /home/ubuntu/wuyou-dispatch-release/install-linux.sh
+```
+
+安装脚本先校验新版本；首次从旧目录升级时会停止旧服务，通过 SQLite backup API 迁移数据库，并在覆盖已有空库前保存迁移前备份。随后原子切换版本并检查 `/api/health`，失败时恢复部署前的程序链接和服务配置。若有异盘或远端挂载目录，可在环境中设置 `DISPATCH_BACKUP_MIRROR_DIR`，每日同步第二份数据库和媒体备份。
 
 ## 正式配置
 
@@ -43,7 +63,8 @@ python3 -m unittest discover -s tests -v
 浏览器冒烟测试需要 Playwright 和本机 Chrome：
 
 ```bash
-node tests/ui_smoke.cjs
+npm install
+npm run test:ui
 ```
 
 测试模式使用独立数据库，不发送真实飞书消息。

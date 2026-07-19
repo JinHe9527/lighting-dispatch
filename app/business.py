@@ -165,6 +165,15 @@ def migrate(conn):
             "version": "INTEGER NOT NULL DEFAULT 1",
         },
     )
+    ensure_columns(
+        conn,
+        "notification_outbox",
+        {
+            "claimed_at": "TEXT DEFAULT ''",
+            "progress": "TEXT DEFAULT ''",
+            "external_id": "TEXT DEFAULT ''",
+        },
+    )
 
     _assert_unique(conn, "groups", ("name",), "工作组")
     _assert_unique(conn, "sla", ("grp", "task_type"), "同组任务类型")

@@ -1,0 +1,10 @@
+{
+  "name": "wuyou-dispatch",
+  "private": true,
+  "scripts": {
+    "test:ui": "node tests/ui_smoke.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

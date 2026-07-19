@@ -40,7 +40,6 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parent
-DB_PATH = ROOT / "dispatch.db"
 LEGACY_JSON = ROOT / "data.json"
 FEISHU = "https://open.feishu.cn/open-apis"
 AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
@@ -80,15 +79,23 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0721a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0721b"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
+    else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
-    else ROOT / ("dispatch-test.db" if TEST_MODE else "dispatch.db")
+    else DATA_ROOT / ("dispatch-test.db" if TEST_MODE else "dispatch.db")
 FEISHU_CONFIGURED = bool(APP_ID and APP_SECRET) and not TEST_MODE
 MAX_REQUEST_BYTES = 64 * 1024
-MEDIA_DIR = ROOT / "media"
+MEDIA_DIR = DATA_ROOT / "media"
 MEDIA_MAX_BYTES = 30 * 1024 * 1024
-LOG_DIR = ROOT / "logs"
-BACKUP_DIR = ROOT / "backups"
+MEDIA_PENDING_FILE_LIMIT = 6
+MEDIA_PENDING_BYTES = 180 * 1024 * 1024
+MEDIA_DISK_RESERVE_BYTES = 512 * 1024 * 1024
+LOG_DIR = DATA_ROOT / "logs"
+BACKUP_DIR = Path(os.environ.get("DISPATCH_BACKUP_DIR", "").strip()) if os.environ.get("DISPATCH_BACKUP_DIR", "").strip() \
+    else DATA_ROOT / "backups"
+BACKUP_MIRROR_DIR = Path(os.environ.get("DISPATCH_BACKUP_MIRROR_DIR", "").strip()) \
+    if os.environ.get("DISPATCH_BACKUP_MIRROR_DIR", "").strip() else None
 PROCESS_STARTED = time.time()
 # 上传 content-type → 落盘扩展名
 MEDIA_EXT = {
@@ -226,7 +233,8 @@ def ensure_columns(conn, table, cols):
 
 
 def init_db():
-    MEDIA_DIR.mkdir(exist_ok=True)
+    DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     conn = db()
     conn.executescript(SCHEMA)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -309,6 +317,13 @@ def init_db():
             )
         conn.execute("UPDATE settings SET v='1' WHERE k='bootstrap_used'")
     business.migrate(conn)
+    conn.execute(
+        """UPDATE notification_outbox
+           SET status='retry',available_at=?,claimed_at='',
+               last_error=CASE WHEN last_error='' THEN '服务重启后恢复未完成发送' ELSE last_error END
+           WHERE status='sending'""",
+        (now_iso(),),
+    )
     if TEST_MODE:
         conn.execute(
             "UPDATE users SET approved=1 WHERE open_id LIKE 'test:%'"
@@ -363,12 +378,23 @@ def used_minutes(started, done):
     return round(d, 1) if d >= 0 else None
 
 
+def insert_audit(conn, user, action, detail=""):
+    conn.execute(
+        "INSERT INTO audit(ts,open_id,name,action,detail) VALUES(?,?,?,?,?)",
+        (
+            now_iso(),
+            user["open_id"] if user else "",
+            user["name"] if user else "系统",
+            action,
+            str(detail or "")[:500],
+        ),
+    )
+
+
 def audit_log(user, action, detail=""):
     try:
         conn = db()
-        conn.execute("INSERT INTO audit(ts,open_id,name,action,detail) VALUES(?,?,?,?,?)",
-                     (now_iso(), user["open_id"] if user else "",
-                      user["name"] if user else "系统", action, detail[:500]))
+        insert_audit(conn, user, action, detail)
         conn.commit()
         conn.close()
     except Exception as e:
@@ -689,55 +715,95 @@ def delete_task_reminder(guid):
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _send_message_now(open_id, text, urgent=False):
-    result = feishu_api(
-        "POST", "/im/v1/messages", token=tenant_token(),
-        query={"receive_id_type": "open_id"},
-        body={"receive_id": open_id, "msg_type": "text",
-              "content": json.dumps({"text": text}, ensure_ascii=False)},
-    )
-    if result.get("code") not in (0, None):
-        raise RuntimeError(result.get("msg") or "飞书消息发送失败")
-    if urgent and setting("urgent_on", "0") == "1":
-        message_id = (result.get("data") or {}).get("message_id")
-        if message_id:
-            urgent_result = feishu_api(
-                "PATCH", f"/im/v1/messages/{message_id}/urgent_app", token=tenant_token(),
-                query={"user_id_type": "open_id"}, body={"user_id_list": [open_id]},
-            )
-            if urgent_result.get("code") not in (0, None):
-                raise RuntimeError(urgent_result.get("msg") or "飞书加急失败")
+def _persist_outbox_progress(row_id, progress, external_id=None):
+    conn = db()
+    if external_id is None:
+        conn.execute(
+            "UPDATE notification_outbox SET progress=? WHERE id=?",
+            (progress, row_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE notification_outbox SET progress=?,external_id=? WHERE id=?",
+            (progress, external_id, row_id),
+        )
+    conn.commit()
+    conn.close()
 
 
-def _create_task_now(recipient_id, payload):
+def _send_message_now(row, payload):
+    progress = row["progress"] or ""
+    message_id = row["external_id"] or ""
+    if progress not in ("message_sent", "urgent_sent"):
+        result = feishu_api(
+            "POST", "/im/v1/messages", token=tenant_token(),
+            query={"receive_id_type": "open_id"},
+            body={
+                "receive_id": row["recipient_id"],
+                "msg_type": "text",
+                "content": json.dumps({"text": payload.get("text") or ""}, ensure_ascii=False),
+                "uuid": row["dedupe_key"][:50],
+            },
+        )
+        if result.get("code") not in (0, None):
+            raise RuntimeError(result.get("msg") or "飞书消息发送失败")
+        message_id = (result.get("data") or {}).get("message_id") or ""
+        if not message_id:
+            raise RuntimeError("飞书消息发送成功但未返回消息编号")
+        _persist_outbox_progress(row["id"], "message_sent", message_id)
+        progress = "message_sent"
+    if payload.get("urgent") and setting("urgent_on", "0") == "1" and progress != "urgent_sent":
+        urgent_result = feishu_api(
+            "PATCH", f"/im/v1/messages/{message_id}/urgent_app", token=tenant_token(),
+            query={"user_id_type": "open_id"}, body={"user_id_list": [row["recipient_id"]]},
+        )
+        if urgent_result.get("code") not in (0, None):
+            raise RuntimeError(urgent_result.get("msg") or "飞书加急失败")
+        _persist_outbox_progress(row["id"], "urgent_sent", message_id)
+
+
+def _create_task_now(row, payload):
+    recipient_id = row["recipient_id"]
     order_id = record_id(payload.get("order_id"))
     if not order_id:
         return
     conn = db()
     order = conn.execute("SELECT status,assignee_id FROM orders WHERE id=?", (order_id,)).fetchone()
     conn.close()
+    guid = row["external_id"] or ""
     if not order or order["assignee_id"] != recipient_id or order["status"] not in ("assigned", "in_progress"):
+        if guid:
+            result = feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
+            if result.get("code") not in (0, None):
+                raise RuntimeError(result.get("msg") or "飞书失效任务清理失败")
+            _persist_outbox_progress(row["id"], "task_cleaned", guid)
         return
-    due_ms = _order_due_ms(payload.get("date"), payload.get("arrive"))
-    body = {"summary": payload.get("summary") or "派工任务", "description": payload.get("description") or ""}
-    if due_ms:
-        _, minutes = reminder_conf()
-        body["due"] = {"timestamp": str(due_ms), "is_all_day": False}
-        body["reminders"] = [{"relative_fire_minute": minutes}]
-    result = feishu_api(
-        "POST", "/task/v2/tasks", token=tenant_token(),
-        query={"user_id_type": "open_id"}, body=body,
-    )
-    guid = ((result.get("data") or {}).get("task") or {}).get("guid")
+    progress = row["progress"] or ""
     if not guid:
-        raise RuntimeError(result.get("msg") or "飞书任务创建失败")
-    member_result = feishu_api(
-        "POST", f"/task/v2/tasks/{guid}/add_members", token=tenant_token(),
-        query={"user_id_type": "open_id"},
-        body={"members": [{"id": recipient_id, "role": "assignee", "type": "user"}]},
-    )
-    if member_result.get("code") not in (0, None):
-        raise RuntimeError(member_result.get("msg") or "飞书任务负责人设置失败")
+        due_ms = _order_due_ms(payload.get("date"), payload.get("arrive"))
+        body = {"summary": payload.get("summary") or "派工任务", "description": payload.get("description") or ""}
+        if due_ms:
+            _, minutes = reminder_conf()
+            body["due"] = {"timestamp": str(due_ms), "is_all_day": False}
+            body["reminders"] = [{"relative_fire_minute": minutes}]
+        result = feishu_api(
+            "POST", "/task/v2/tasks", token=tenant_token(),
+            query={"user_id_type": "open_id"}, body=body,
+        )
+        guid = ((result.get("data") or {}).get("task") or {}).get("guid")
+        if not guid:
+            raise RuntimeError(result.get("msg") or "飞书任务创建失败")
+        _persist_outbox_progress(row["id"], "task_created", guid)
+        progress = "task_created"
+    if progress != "member_added":
+        member_result = feishu_api(
+            "POST", f"/task/v2/tasks/{guid}/add_members", token=tenant_token(),
+            query={"user_id_type": "open_id"},
+            body={"members": [{"id": recipient_id, "role": "assignee", "type": "user"}]},
+        )
+        if member_result.get("code") not in (0, None):
+            raise RuntimeError(member_result.get("msg") or "飞书任务负责人设置失败")
+        _persist_outbox_progress(row["id"], "member_added", guid)
     conn = db()
     changed = conn.execute(
         """UPDATE orders SET feishu_task_guid=?
@@ -747,20 +813,34 @@ def _create_task_now(recipient_id, payload):
     conn.commit()
     conn.close()
     if changed != 1:
-        feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
+        result = feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
+        if result.get("code") not in (0, None):
+            raise RuntimeError(result.get("msg") or "飞书失效任务清理失败")
+        _persist_outbox_progress(row["id"], "task_cleaned", guid)
 
 
-def _delete_task_now(payload):
+def _delete_task_now(row, payload):
+    if row["progress"] == "task_deleted":
+        return
     guid = (payload.get("guid") or "").strip()
     if guid:
         result = feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
         if result.get("code") not in (0, None):
             raise RuntimeError(result.get("msg") or "飞书任务删除失败")
+        _persist_outbox_progress(row["id"], "task_deleted", guid)
 
 
 def process_outbox_once(limit=20):
     conn = db()
     conn.execute("BEGIN IMMEDIATE")
+    stale_at = business.format_dt(datetime.now() - timedelta(minutes=10))
+    conn.execute(
+        """UPDATE notification_outbox
+           SET status='retry',available_at=?,claimed_at='',
+               last_error=CASE WHEN last_error='' THEN '发送超时后自动恢复' ELSE last_error END
+           WHERE status='sending' AND (claimed_at='' OR claimed_at<=?)""",
+        (now_iso(), stale_at),
+    )
     rows = conn.execute(
         """SELECT * FROM notification_outbox
            WHERE status IN ('pending','retry') AND available_at<=?
@@ -768,7 +848,10 @@ def process_outbox_once(limit=20):
         (now_iso(), limit),
     ).fetchall()
     for row in rows:
-        conn.execute("UPDATE notification_outbox SET status='sending' WHERE id=?", (row["id"],))
+        conn.execute(
+            "UPDATE notification_outbox SET status='sending',claimed_at=? WHERE id=?",
+            (now_iso(), row["id"]),
+        )
     conn.commit()
     conn.close()
     for row in rows:
@@ -777,31 +860,31 @@ def process_outbox_once(limit=20):
             payload = json.loads(row["payload"])
             if not TEST_MODE and FEISHU_CONFIGURED:
                 if row["kind"] == "message":
-                    _send_message_now(row["recipient_id"], payload.get("text") or "", bool(payload.get("urgent")))
+                    _send_message_now(row, payload)
                 elif row["kind"] == "task_create":
                     if setting("reminder_on", "1") == "1":
-                        _create_task_now(row["recipient_id"], payload)
+                        _create_task_now(row, payload)
                 elif row["kind"] == "task_delete":
-                    _delete_task_now(payload)
+                    _delete_task_now(row, payload)
         except Exception as exc:
             error = str(exc)[:500]
         conn = db()
         if not error:
             conn.execute(
-                "UPDATE notification_outbox SET status='sent',sent_at=?,last_error='' WHERE id=?",
+                "UPDATE notification_outbox SET status='sent',sent_at=?,claimed_at='',last_error='' WHERE id=?",
                 (now_iso(), row["id"]),
             )
         else:
             attempts = int(row["attempts"] or 0) + 1
             if attempts >= 5:
                 conn.execute(
-                    "UPDATE notification_outbox SET status='failed',attempts=?,last_error=? WHERE id=?",
+                    "UPDATE notification_outbox SET status='failed',attempts=?,claimed_at='',last_error=? WHERE id=?",
                     (attempts, error, row["id"]),
                 )
             else:
                 available = datetime.now() + timedelta(minutes=2 ** attempts)
                 conn.execute(
-                    """UPDATE notification_outbox SET status='retry',attempts=?,available_at=?,last_error=?
+                    """UPDATE notification_outbox SET status='retry',attempts=?,available_at=?,claimed_at='',last_error=?
                        WHERE id=?""",
                     (attempts, business.format_dt(available), error, row["id"]),
                 )
@@ -812,6 +895,19 @@ def process_outbox_once(limit=20):
 _LAST_BACKUP_DAY = ""
 
 
+def _sync_backup_media(target_root):
+    media_backup = target_root / "media"
+    media_backup.mkdir(parents=True, exist_ok=True)
+    if not MEDIA_DIR.exists():
+        return
+    for source_path in MEDIA_DIR.iterdir():
+        if not source_path.is_file():
+            continue
+        target_path = media_backup / source_path.name
+        if not target_path.exists() or target_path.stat().st_size != source_path.stat().st_size:
+            shutil.copy2(source_path, target_path)
+
+
 def backup_database(force=False):
     global _LAST_BACKUP_DAY
     if TEST_MODE:
@@ -819,7 +915,7 @@ def backup_database(force=False):
     day = datetime.now().strftime("%Y-%m-%d")
     if not force and _LAST_BACKUP_DAY == day:
         return None
-    BACKUP_DIR.mkdir(exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     target = BACKUP_DIR / f"dispatch-{datetime.now():%Y%m%d-%H%M%S}.db"
     source = db()
     destination = sqlite3.connect(target)
@@ -831,6 +927,16 @@ def backup_database(force=False):
     backups = sorted(BACKUP_DIR.glob("dispatch-*.db"), key=lambda path: path.stat().st_mtime)
     for old_backup in backups[:-30]:
         old_backup.unlink(missing_ok=True)
+    _sync_backup_media(BACKUP_DIR)
+    if BACKUP_MIRROR_DIR:
+        BACKUP_MIRROR_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, BACKUP_MIRROR_DIR / target.name)
+        _sync_backup_media(BACKUP_MIRROR_DIR)
+        mirror_backups = sorted(
+            BACKUP_MIRROR_DIR.glob("dispatch-*.db"), key=lambda path: path.stat().st_mtime
+        )
+        for old_backup in mirror_backups[:-30]:
+            old_backup.unlink(missing_ok=True)
     _LAST_BACKUP_DAY = day
     return target
 
@@ -963,8 +1069,13 @@ def run_scheduled_jobs():
                 )
 
         old_uploads = conn.execute(
-            "SELECT id,path FROM uploads WHERE status='pending' AND created_at<?",
-            (business.format_dt(now - timedelta(hours=24)),),
+            """SELECT id,path FROM uploads
+               WHERE (status='pending' AND created_at<?)
+                  OR (status='uploading' AND created_at<?)""",
+            (
+                business.format_dt(now - timedelta(hours=24)),
+                business.format_dt(now - timedelta(hours=1)),
+            ),
         ).fetchall()
         conn.executemany("UPDATE uploads SET status='expired' WHERE id=?", [(row["id"],) for row in old_uploads])
         conn.execute("DELETE FROM sessions WHERE expires_at<=?", (stamp,))
@@ -1934,6 +2045,7 @@ def do_save(user, body):
     if not fields:
         return 400, "没有可保存的字段"
     conn = db()
+    conn.execute("BEGIN IMMEDIATE")
     if entity == "users":
         oid = rec.get("open_id")
         if not oid:
@@ -1986,7 +2098,7 @@ def do_save(user, body):
             if fields["shift"] not in valid_shifts:
                 conn.close()
                 return 400, "非法班次"
-        if fields.get("status") and fields["status"] not in TECH_STATUS:
+        if "status" in fields and fields["status"] not in TECH_STATUS:
             conn.close()
             return 400, "非法状态"
         active = conn.execute(
@@ -1995,9 +2107,19 @@ def do_save(user, body):
         assigned_or_active = conn.execute(
             "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress')", (oid,)
         ).fetchone()["c"]
-        if active and fields.get("status") in ("free", "rest", "off"):
+        current_or_imminent = conn.execute(
+            """SELECT COUNT(*) c FROM orders
+               WHERE assignee_id=? AND status IN ('assigned','in_progress')
+               AND (status='in_progress' OR scheduled_start<=?) AND scheduled_end>?""",
+            (
+                oid,
+                business.format_dt(datetime.now() + timedelta(minutes=15)),
+                business.format_dt(datetime.now()),
+            ),
+        ).fetchone()["c"]
+        if current_or_imminent and "status" in fields and fields["status"] != "busy":
             conn.close()
-            return 409, "该人员还有进行中工单,完成工单后才能切换到此状态"
+            return 409, "该人员有正在执行或即将开始的工单，只能保持忙碌状态"
         invalidates_assignment = (
             fields.get("role") == "team"
             or ("grp" in fields and fields["grp"] != (target_user["grp"] or ""))
@@ -2083,6 +2205,18 @@ def do_save(user, body):
             if buffer is None or buffer < 0:
                 conn.close()
                 return 400, "缓冲不能小于 0"
+            if current:
+                next_grp = fields.get("grp", current["grp"])
+                next_task_type = fields.get("task_type", current["task_type"])
+                if (next_grp, next_task_type) != (current["grp"], current["task_type"]):
+                    active_rules = conn.execute(
+                        """SELECT COUNT(*) count FROM orders WHERE grp=? AND task_type=?
+                           AND status IN ('pending','assigned','in_progress')""",
+                        (current["grp"], current["task_type"]),
+                    ).fetchone()["count"]
+                    if active_rules:
+                        conn.close()
+                        return 409, f"该任务类型还有 {active_rules} 张未结束订单，结束后才能改名或换组"
         if entity == "shifts":
             current = conn.execute("SELECT * FROM shifts WHERE id=?", (rid,)).fetchone() if rid else None
             shift_old_name = current["name"] if current else None
@@ -2098,6 +2232,29 @@ def do_save(user, body):
                         conn.close()
                         return 400, f"{label}时间格式应为 HH:MM(如 09:00)"
                     fields[key] = t
+            if current and ({"start", "end"} & set(fields)):
+                next_start = fields.get("start", current["start"])
+                next_end = fields.get("end", current["end"])
+                active_orders = conn.execute(
+                    """SELECT o.* FROM orders o JOIN users u ON u.open_id=o.assignee_id
+                       WHERE u.shift=? AND o.status IN ('assigned','in_progress')""",
+                    (current["name"],),
+                ).fetchall()
+                for active_order in active_orders:
+                    order_start, order_end = business.order_bounds(active_order)
+                    shift_start, shift_end = business.shift_bounds(
+                        active_order["date"], next_start, next_end
+                    )
+                    if (
+                        not order_start
+                        or not order_end
+                        or not shift_start
+                        or not shift_end
+                        or order_start < shift_start
+                        or order_end > shift_end
+                    ):
+                        conn.close()
+                        return 409, f"新班次时间会使工单 #{active_order['id']} 超出排班范围，请先改派"
         if entity == "groups":
             if "name" in fields:
                 fields["name"] = str(fields["name"] or "").strip()
@@ -2114,6 +2271,14 @@ def do_save(user, body):
                     fields.pop("sort")
             if "auto" in fields:
                 fields["auto"] = 1 if str(fields["auto"]) in ("1", "true", "on", "yes") else 0
+            if "color" in fields:
+                color = str(fields["color"] or "").strip()
+                if len(color) != 7 or not color.startswith("#") or any(
+                    ch not in "0123456789abcdefABCDEF" for ch in color[1:]
+                ):
+                    conn.close()
+                    return 400, "组颜色必须是 #RRGGBB 格式"
+                fields["color"] = color
         if entity == "sla" and fields.get("grp"):
             if not conn.execute("SELECT 1 FROM groups WHERE name=?", (fields["grp"],)).fetchone():
                 conn.close()
@@ -2163,9 +2328,9 @@ def do_save(user, body):
             )
         if entity == "shifts" and shift_old_name and fields.get("name") and fields["name"] != shift_old_name:
             conn.execute("UPDATE users SET shift=? WHERE shift=?", (fields["name"], shift_old_name))
+    insert_audit(conn, user, f"编辑{entity}", f"{target_desc} {json.dumps(fields, ensure_ascii=False)[:200]}")
     conn.commit()
     conn.close()
-    audit_log(user, f"编辑{entity}", f"{target_desc} {json.dumps(fields, ensure_ascii=False)[:200]}")
     return 200, None
 
 
@@ -2179,6 +2344,7 @@ def do_remove(user, body):
     if not rid:
         return 400, "非法记录编号"
     conn = db()
+    conn.execute("BEGIN IMMEDIATE")
     task_guid = ""
     if entity == "orders":
         order = conn.execute("SELECT status,feishu_task_guid FROM orders WHERE id=?", (rid,)).fetchone()
@@ -2230,11 +2396,11 @@ def do_remove(user, body):
     if conn.execute(f"DELETE FROM {entity} WHERE id=?", (rid,)).rowcount != 1:
         conn.close()
         return 400, "记录不存在"
+    insert_audit(conn, user, f"删除{entity}", f"#{rid}")
     conn.commit()
     conn.close()
     if task_guid:
         delete_task_reminder(task_guid)
-    audit_log(user, f"删除{entity}", f"#{rid}")
     return 200, None
 
 
@@ -2342,10 +2508,11 @@ def do_set_setting(user, body):
         except ValueError:
             return 400, "提前分钟需为数字"
     conn = db()
+    conn.execute("BEGIN IMMEDIATE")
     conn.execute("INSERT OR REPLACE INTO settings(k,v) VALUES(?,?)", (k, v))
+    insert_audit(conn, user, "改设置", f"{k}={v}")
     conn.commit()
     conn.close()
-    audit_log(user, "改设置", f"{k}={v}")
     return 200, None
 
 
@@ -2360,6 +2527,7 @@ def do_purge(user, body):
         return 400, "确认口令不对(需输入「清空」两个字)"
     conn = db()
     if what == "orders":
+        conn.execute("BEGIN IMMEDIATE")
         n = conn.execute("SELECT COUNT(*) c FROM orders").fetchone()["c"]
         guids = [r["feishu_task_guid"] for r in conn.execute(
             "SELECT feishu_task_guid FROM orders WHERE COALESCE(feishu_task_guid,'')!=''")]
@@ -2369,11 +2537,11 @@ def do_purge(user, body):
         conn.execute("DELETE FROM uploads WHERE order_id IS NOT NULL")
         conn.execute("DELETE FROM orders")
         conn.execute("UPDATE users SET status=CASE WHEN status IN('busy','check') THEN 'free' ELSE status END, task='' WHERE role!='team'")
+        insert_audit(conn, user, "清空工单数据", f"删除 {n} 张工单(人员/团队/配置保留)")
         conn.commit()
         conn.close()
         for g in guids:
             delete_task_reminder(g)
-        audit_log(user, "清空工单数据", f"删除 {n} 张工单(人员/团队/配置保留)")
         return 200, None
     if what == "audit":
         conn.close()
@@ -2398,9 +2566,9 @@ def do_claim_admin(user, body):
         return 403, "引导码不对(在启动服务器的终端里找 6 位数字)"
     conn.execute("UPDATE users SET role='admin',approved=1 WHERE open_id=?", (user["open_id"],))
     conn.execute("UPDATE settings SET v='1' WHERE k='bootstrap_used' AND v='0'")
+    insert_audit(conn, user, "认领管理员", "引导码通过")
     conn.commit()
     conn.close()
-    audit_log(user, "认领管理员", "引导码通过")
     return 200, None
 
 
@@ -2426,7 +2594,7 @@ def request_client_ip(peer, forwarded_for=""):
 
 
 def rate_limited(ip, path):
-    """简易限流:每 IP 每分钟普通请求 300 次 / 登录相关 30 次,挡住脚本乱打与暴力尝试。"""
+    """每个已登录账号或未登录 IP 每分钟普通请求 300 次、登录请求 30 次。"""
     is_auth = path.startswith("/auth/")
     burst = 30 if is_auth else 300
     now_min = int(time.time() // 60)
@@ -2440,6 +2608,38 @@ def rate_limited(ip, path):
         if len(RATE_HITS) > 4096:  # 防字典无限膨胀
             RATE_HITS.clear()
     return n > burst
+
+
+def reserve_upload(owner_id, token, path, kind, size):
+    conn = db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        usage = conn.execute(
+            """SELECT COUNT(*) count,COALESCE(SUM(size),0) bytes FROM uploads
+               WHERE owner_id=? AND status IN ('uploading','pending')""",
+            (owner_id,),
+        ).fetchone()
+        if usage["count"] >= MEDIA_PENDING_FILE_LIMIT:
+            return 429, f"你还有 {usage['count']} 个未使用附件，请先完成下单或等待过期清理"
+        if usage["bytes"] + size > MEDIA_PENDING_BYTES:
+            return 413, "未使用附件总容量已达上限，请先完成下单"
+        reserved = conn.execute(
+            "SELECT COALESCE(SUM(size),0) bytes FROM uploads WHERE status='uploading'"
+        ).fetchone()["bytes"]
+        free_bytes = shutil.disk_usage(MEDIA_DIR).free
+        if free_bytes - reserved - size < MEDIA_DISK_RESERVE_BYTES:
+            return 507, "服务器存储空间不足，请联系管理员"
+        conn.execute(
+            """INSERT INTO uploads(token,path,kind,owner_id,status,size,created_at)
+               VALUES(?,?,?,?,'uploading',?,?)""",
+            (token, path, kind, owner_id, size, now_iso()),
+        )
+        conn.commit()
+        return 200, None
+    finally:
+        if conn.in_transaction:
+            conn.rollback()
+        conn.close()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2494,7 +2694,15 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _user(self):
-        return session_user(self._cookie("sid"))
+        if not hasattr(self, "_cached_user"):
+            self._cached_user = session_user(self._cookie("sid"))
+        return self._cached_user
+
+    def _rate_key(self):
+        user = self._user()
+        if user:
+            return f"user:{user['open_id']}"
+        return f"ip:{self._client_ip()}"
 
     @staticmethod
     def _approved(user):
@@ -2536,6 +2744,12 @@ class Handler(BaseHTTPRequestHandler):
         token = secrets.token_urlsafe(24)
         fname = f"{secrets.token_urlsafe(16)}.{ext}"
         dest = MEDIA_DIR / fname
+        kind = "video" if ctype.startswith("video/") else "audio"
+        reserve_code, reserve_error = reserve_upload(
+            u["open_id"], token, f"/media/{fname}", kind, n
+        )
+        if reserve_code != 200:
+            return self._send(reserve_code, {"ok": False, "msg": reserve_error})
         remaining = n
         try:
             with open(dest, "wb") as f:
@@ -2547,20 +2761,32 @@ class Handler(BaseHTTPRequestHandler):
                     remaining -= len(chunk)
         except Exception:
             dest.unlink(missing_ok=True)
+            conn = db()
+            conn.execute("UPDATE uploads SET status='expired' WHERE token=? AND status='uploading'", (token,))
+            conn.commit()
+            conn.close()
             return self._send(500, {"ok": False, "msg": "上传失败"})
         if remaining > 0:
             dest.unlink(missing_ok=True)
+            conn = db()
+            conn.execute("UPDATE uploads SET status='expired' WHERE token=? AND status='uploading'", (token,))
+            conn.commit()
+            conn.close()
             return self._send(400, {"ok": False, "msg": "上传中断,请重试"})
-        kind = "video" if ctype.startswith("video/") else "audio"
         conn = db()
-        conn.execute(
-            """INSERT INTO uploads(token,path,kind,owner_id,status,size,created_at)
-               VALUES(?,?,?,?,'pending',?,?)""",
-            (token, f"/media/{fname}", kind, u["open_id"], n, now_iso()),
-        )
+        conn.execute("BEGIN IMMEDIATE")
+        changed = conn.execute(
+            "UPDATE uploads SET status='pending' WHERE token=? AND owner_id=? AND status='uploading'",
+            (token, u["open_id"]),
+        ).rowcount
+        if changed != 1:
+            conn.rollback()
+            conn.close()
+            dest.unlink(missing_ok=True)
+            return self._send(500, {"ok": False, "msg": "上传记录确认失败，请重试"})
+        insert_audit(conn, u, "上传附件", f"{kind} {fname}")
         conn.commit()
         conn.close()
-        audit_log(u, "上传附件", f"{kind} {fname}")
         return self._send(200, {"ok": True, "token": token, "kind": kind})
 
     def _serve_media(self, path):
@@ -2632,7 +2858,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            limit_key = self._cookie("sid") or self._client_ip()
+            limit_key = self._rate_key()
             if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path in ("/", "/index.html"):
@@ -2651,6 +2877,14 @@ class Handler(BaseHTTPRequestHandler):
                     failed = conn.execute(
                         "SELECT COUNT(*) count FROM notification_outbox WHERE status='failed'"
                     ).fetchone()["count"]
+                    sending = conn.execute(
+                        "SELECT COUNT(*) count FROM notification_outbox WHERE status='sending'"
+                    ).fetchone()["count"]
+                    stuck = conn.execute(
+                        """SELECT COUNT(*) count FROM notification_outbox
+                           WHERE status='sending' AND (claimed_at='' OR claimed_at<=?)""",
+                        (business.format_dt(datetime.now() - timedelta(minutes=10)),),
+                    ).fetchone()["count"]
                     scheduler = conn.execute(
                         "SELECT updated_at FROM system_health WHERE key='scheduler'"
                     ).fetchone()
@@ -2660,14 +2894,21 @@ class Handler(BaseHTTPRequestHandler):
                         scheduler_time and datetime.now() - scheduler_time <= timedelta(seconds=120)
                     )
                     scheduler_starting = not scheduler_time and time.time() - PROCESS_STARTED <= 120
-                    free_mb = shutil.disk_usage(ROOT).free // 1024 // 1024
-                    healthy = (scheduler_ok or scheduler_starting) and failed == 0 and free_mb >= 250
+                    free_mb = shutil.disk_usage(DATA_ROOT).free // 1024 // 1024
+                    healthy = (
+                        (scheduler_ok or scheduler_starting)
+                        and failed == 0
+                        and stuck == 0
+                        and free_mb >= 250
+                    )
                     return self._send(200 if healthy else 503, {
                         "ok": healthy,
                         "version": SERVER_VERSION,
                         "db": "ok",
                         "scheduler": "ok" if scheduler_ok else ("starting" if scheduler_starting else "stale"),
                         "pending": pending,
+                        "sending": sending,
+                        "stuck": stuck,
                         "failed": failed,
                         "free_mb": free_mb,
                     })
@@ -2803,7 +3044,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             path = urllib.parse.urlparse(self.path).path
-            limit_key = self._cookie("sid") or self._client_ip()
+            limit_key = self._rate_key()
             if rate_limited(limit_key, path):
                 return self._send(429, {"ok": False, "msg": "请求太频繁,稍后再试"})
             if path == "/api/upload":
@@ -2909,7 +3150,7 @@ class DispatchHTTPServer(ThreadingHTTPServer):
 
 
 def configure_logging():
-    LOG_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(LOG_DIR / "dispatch.log", maxBytes=5 * 1024 * 1024, backupCount=10, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     root = logging.getLogger()
