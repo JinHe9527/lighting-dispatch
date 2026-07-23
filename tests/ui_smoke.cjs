@@ -63,13 +63,34 @@ async function traverseRole(page, profile) {
   process.stdout.write("Admin logged in\n");
   const viewport = await admin.locator('meta[name="viewport"]').getAttribute("content");
   if (/maximum-scale|user-scalable\s*=\s*no/i.test(viewport || "")) throw new Error(`页面禁止缩放：${viewport}`);
+  const statusSemantics = await admin.evaluate(() => ({
+    off: personAvail({ status: "off", shift: "中班", intern: 0 }).label,
+    check: STATUS.check.label,
+    crewAudit: auditCatOf("编辑users"),
+  }));
+  if (statusSemantics.off !== "下班" || statusSemantics.check !== "巡检" || statusSemantics.crewAudit !== "crew") {
+    throw new Error(`人员状态或审计分类异常：${JSON.stringify(statusSemantics)}`);
+  }
   await traverseRole(admin, "admin");
   await admin.locator('[data-page="crew"]').first().click();
   await admin.getByText("下单账号绑定", { exact: true }).waitFor();
-  await admin.getByText("人员能力矩阵", { exact: true }).waitFor();
+  await admin.getByText("账号准入与管理层权限", { exact: true }).waitFor();
+  if (await admin.getByText("人员能力矩阵", { exact: true }).count()) throw new Error("人员能力矩阵仍然显示");
+  const today = await admin.evaluate(() => todayStr());
+  await admin.locator('[data-leave="test:staff"]').click();
+  await admin.locator("#absenceType").selectOption("travel");
+  await admin.locator("#absenceStart").fill(today);
+  await admin.locator("#absenceEnd").fill(today);
+  await admin.locator("#absenceSave").click();
+  await admin.getByText("出差安排已保存", { exact: true }).waitFor();
+  await admin.locator('[data-leave="test:staff"]').getByText("出差至", { exact: false }).waitFor();
+  await admin.locator('[data-leave="test:staff"]').click();
+  await admin.locator("#absenceClear").click();
+  await admin.getByText("离岗安排已结束", { exact: true }).waitFor();
   await admin.locator('[data-page="settings"]').first().click();
   await admin.locator('[data-cfgsec="规则库"]').first().click();
   await admin.getByText("团队可预约天数", { exact: true }).waitFor();
+  if (await admin.getByText("自动放行(推荐)", { exact: true }).count()) throw new Error("登录准入仍允许自动放行");
   await admin.locator('[data-cfgsec="数据维护"]').first().click();
   await admin.getByText("审计日志永久保留", { exact: true }).waitFor();
   await admin.locator('.side [data-page="request"]').click();
@@ -104,6 +125,25 @@ async function traverseRole(page, profile) {
   await admin.getByText("每日接单趋势", { exact: true }).waitFor();
   if (!await admin.locator('.side [data-page="stats"]').evaluate(button => button.classList.contains("active"))) throw new Error("刷新后未恢复 URL 对应页面");
   await admin.screenshot({ path: "/tmp/dispatch-admin-smoke.png", fullPage: true });
+  await admin.setViewportSize({ width: 2048, height: 1152 });
+  await admin.locator('[data-page="settings"]').first().click();
+  const desktopLayout = await admin.evaluate(() => {
+    const workspace = document.querySelector(".workspace").getBoundingClientRect();
+    const settings = document.querySelector(".settings-wrap").getBoundingClientRect();
+    const control = [...document.querySelectorAll(".settings-wrap input,.settings-wrap select")].find(element => element.offsetParent !== null);
+    return {
+      workspace: Math.round(workspace.width),
+      settings: Math.round(settings.width),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      fontSize: parseFloat(getComputedStyle(document.body).fontSize),
+      controlHeight: control ? Math.round(control.getBoundingClientRect().height) : 0,
+    };
+  });
+  if (desktopLayout.workspace < 1400 || desktopLayout.settings < 1000) throw new Error(`宽屏内容区过窄：${JSON.stringify(desktopLayout)}`);
+  if (desktopLayout.overflow > 2) throw new Error(`电脑端横向溢出 ${desktopLayout.overflow}px`);
+  if (desktopLayout.fontSize < 14 || desktopLayout.controlHeight < 34) throw new Error(`电脑端文字或控件过小：${JSON.stringify(desktopLayout)}`);
+  await admin.locator('[data-page="crew"]').first().click();
+  if (await admin.getByText("已选：通过审核,允许使用", { exact: true }).count()) throw new Error("人员审核按钮仍有错误文案");
 
   const leadContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const lead = await leadContext.newPage();
@@ -169,6 +209,49 @@ async function traverseRole(page, profile) {
   const mobileOverflow = await team.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   if (mobileOverflow > 2) throw new Error(`移动预约页横向溢出 ${mobileOverflow}px`);
   await team.screenshot({ path: "/tmp/dispatch-team-mobile-smoke.png", fullPage: true });
+
+  await admin.locator('.side [data-page="crew"]').click();
+  await admin.locator('[data-manager-level="readonly"][data-account="test:team"]').click();
+  await admin.getByText("已设为管理层只读，可查看全部管理端内容", { exact: true }).waitFor();
+
+  const managerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const manager = await managerContext.newPage();
+  manager.setDefaultTimeout(10000);
+  await login(manager, "team");
+  await manager.getByText("管理层只读", { exact: true }).first().waitFor();
+  const managerNav = await manager.locator(".side .nav").innerText();
+  for (const label of ["总览", "调度", "人员", "统计", "配置", "审计"]) {
+    if (!managerNav.includes(label)) throw new Error(`管理层只读缺少管理端页面：${label}`);
+  }
+  await manager.locator('.side [data-page="request"]').click();
+  if (!await manager.locator("#placeOrder").isDisabled()) throw new Error("管理层只读的下单按钮仍可操作");
+  const writeResult = await manager.evaluate(async () => {
+    const response = await fetch("/api/setting", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "book_team_cap", value: "9" }),
+    });
+    return { status: response.status, body: await response.json() };
+  });
+  if (writeResult.status !== 403 || !String(writeResult.body.msg || "").includes("只读")) {
+    throw new Error(`管理层只读写接口未拦截：${JSON.stringify(writeResult)}`);
+  }
+  await manager.screenshot({ path: "/tmp/dispatch-manager-readonly-smoke.png", fullPage: true });
+  await managerContext.close();
+
+  const teamId = await admin.evaluate(() => state.teams[0].id);
+  const restore = await admin.evaluate(async id => {
+    const response = await fetch("/api/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entity: "users",
+        record: { open_id: "test:team", role: "team", read_only: "0", team_id: id },
+      }),
+    });
+    return { status: response.status, body: await response.json() };
+  }, teamId);
+  if (restore.status !== 200 || !restore.body.ok) throw new Error(`测试身份恢复失败：${JSON.stringify(restore)}`);
 
   await browser.close();
   if (errors.length) throw new Error(errors.join("\n"));

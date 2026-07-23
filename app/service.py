@@ -40,6 +40,13 @@ class DispatchService:
         result = (total - int(minutes)) % 1440
         return f"{result // 60:02d}:{result % 60:02d}"
 
+    @staticmethod
+    def _timestamp(value):
+        text = str(value or "").strip().replace("T", " ")
+        if len(text) == 16:
+            text += ":00"
+        return business.parse_dt(text)
+
     def _team(self, conn, user, body):
         if user["role"] == "team":
             team_id = business.bound_team_id(user)
@@ -102,6 +109,64 @@ class DispatchService:
                 f"order:{order['id']}:open:{worker['open_id']}",
                 urgent=bool(order["urgent"]),
             )
+
+    @staticmethod
+    def _open_session(conn, order_id, worker_id=""):
+        sql = "SELECT * FROM work_sessions WHERE order_id=? AND ended_at=''"
+        args = [order_id]
+        if worker_id:
+            sql += " AND worker_id=?"
+            args.append(worker_id)
+        return conn.execute(sql + " ORDER BY id DESC LIMIT 1", args).fetchone()
+
+    @staticmethod
+    def _worker_has_open_session(conn, worker_id, ignore_order_id=None):
+        sql = "SELECT order_id FROM work_sessions WHERE worker_id=? AND ended_at=''"
+        args = [worker_id]
+        if ignore_order_id:
+            sql += " AND order_id!=?"
+            args.append(ignore_order_id)
+        return conn.execute(sql + " LIMIT 1", args).fetchone()
+
+    @staticmethod
+    def _session_overlap(conn, worker_id, started_at, ended_at, ignore_session_id=None):
+        sql = (
+            "SELECT order_id FROM work_sessions WHERE worker_id=? "
+            "AND started_at<? AND (ended_at='' OR ended_at>?)"
+        )
+        args = [worker_id, business.format_dt(ended_at), business.format_dt(started_at)]
+        if ignore_session_id:
+            sql += " AND id!=?"
+            args.append(ignore_session_id)
+        return conn.execute(sql + " ORDER BY started_at LIMIT 1", args).fetchone()
+
+    def _queue_time_review(self, conn, order, review_id, label):
+        managers = conn.execute(
+            "SELECT open_id FROM users WHERE role='admin' OR (lead=1 AND grp=?)",
+            (order["grp"],),
+        ).fetchall()
+        for manager in managers:
+            business.queue_notification(
+                conn,
+                manager["open_id"],
+                f"{label}：#{order['id']} {order['team']} · {order['task_type']} · {order['assignee_name']}",
+                f"time-review:{review_id}:manager:{manager['open_id']}",
+                urgent=True,
+            )
+
+    def _create_time_review(self, conn, order, user, kind, proposed_at, note="", reason="", original_at=""):
+        cursor = conn.execute(
+            """INSERT INTO time_reviews(
+                 order_id,worker_id,kind,proposed_at,original_at,note,reason,status,
+                 requested_by,requested_name,requested_at
+               ) VALUES(?,?,?,?,?,?,?,'pending',?,?,?)""",
+            (
+                order["id"], order["assignee_id"], kind, business.format_dt(proposed_at),
+                original_at or "", note[:300], reason[:500], user["open_id"], user["name"],
+                business.now_iso(),
+            ),
+        )
+        return cursor.lastrowid
 
     def _claim_order_uploads(self, conn, user, order_id, body):
         tokens = body.get("upload_tokens") or []
@@ -327,6 +392,19 @@ class DispatchService:
                 return 409, "只有已指派且未开始的订单可以开始"
             if order["assignee_id"] != user["open_id"]:
                 return 403, "只有当前负责人可以开始任务"
+            worker = conn.execute("SELECT * FROM users WHERE open_id=?", (user["open_id"],)).fetchone()
+            if not worker:
+                return 404, "工作人员不存在"
+            block = business.assignment_block(
+                conn, worker, order, ignore_order_id=order_id, require_available_now=True
+            )
+            if block:
+                return 409, block
+            active = self._worker_has_open_session(conn, user["open_id"], order_id)
+            if active:
+                return 409, f"你还有进行中的工单 #{active['order_id']}，结束或转包后才能开始新任务"
+            if business.active_time_review(conn, order_id):
+                return 409, "该订单有待处理的时间核实，不能重复开始"
             start, _ = business.order_bounds(order)
             early = max(0, min(120, int(self.setting("start_early_min", "30") or 30)))
             if start and datetime.now() < start - timedelta(minutes=early):
@@ -347,9 +425,52 @@ class DispatchService:
         finally:
             conn.close()
 
+    def report_start(self, user, body):
+        order_id = self._record_id(body.get("order_id"))
+        proposed = self._timestamp(body.get("started_at"))
+        reason = (body.get("reason") or "").strip()
+        if not order_id:
+            return 400, "非法工单编号"
+        if not proposed:
+            return 400, "补报开始时间无效"
+        if not reason:
+            return 400, "补报开始必须填写原因"
+        conn = self.db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            if not order:
+                return 404, "工单不存在"
+            if order["status"] != "assigned" or order["started_at"]:
+                return 409, "只有尚未开始的已指派订单可以补报开始"
+            if order["assignee_id"] != user["open_id"]:
+                return 403, "只能补报自己负责的订单"
+            if business.active_time_review(conn, order_id):
+                return 409, "该订单已有待处理的时间核实"
+            now = datetime.now()
+            created = business.parse_dt(order["created_at"])
+            if proposed > now or (created and proposed < created):
+                return 400, "补报时间必须在下单之后且不能晚于现在"
+            active = self._worker_has_open_session(conn, user["open_id"], order_id)
+            if active:
+                return 409, f"补报时间与进行中的工单 #{active['order_id']} 冲突"
+            review_id = self._create_time_review(
+                conn, order, user, "retro_start", proposed, reason=reason
+            )
+            business.add_event(
+                conn, order_id, "补报开始待核实", user, "assigned", "assigned",
+                f"申报 {business.format_dt(proposed)} · {reason}",
+            )
+            self._queue_time_review(conn, order, review_id, "补报开始待核实")
+            conn.commit()
+            return 200, None
+        finally:
+            conn.close()
+
     def complete(self, user, body):
         order_id = self._record_id(body.get("order_id"))
         note = (body.get("note") or "").strip()
+        reason = (body.get("reason") or "").strip()
         if not order_id:
             return 400, "非法工单编号"
         if self.setting("rule_done_note", "1") == "1" and not note:
@@ -362,9 +483,39 @@ class DispatchService:
                 return 404, "工单不存在"
             if order["status"] != "in_progress" or not order["started_at"]:
                 return 409, "只有已经开始的订单可以完成"
-            if user["role"] != "admin" and order["assignee_id"] != user["open_id"]:
+            if order["assignee_id"] != user["open_id"]:
                 return 403, "只能完成自己负责的订单"
-            stamp = business.now_iso()
+            if business.active_time_review(conn, order_id):
+                return 409, "该订单已有待处理的时间核实"
+            now = datetime.now()
+            proposed = self._timestamp(body.get("ended_at")) or now
+            started = business.parse_dt(order["started_at"])
+            if not started or proposed < started or proposed > now:
+                return 400, "结束时间必须在开始时间之后且不能晚于现在"
+            scheduled_end = business.parse_dt(order["scheduled_end"])
+            retroactive = abs((now - proposed).total_seconds()) > 120
+            early = bool(scheduled_end and proposed < scheduled_end)
+            if (early or retroactive) and not reason:
+                return 400, "提前或补报结束必须填写原因"
+            if early or retroactive:
+                kind = "retro_end" if retroactive else "early_end"
+                review_id = self._create_time_review(
+                    conn, order, user, kind, proposed, note=note,
+                    reason=reason,
+                )
+                conn.execute(
+                    "UPDATE orders SET status='completion_review',version=version+1 WHERE id=? AND status='in_progress'",
+                    (order_id,),
+                )
+                label = "补报结束待核实" if retroactive else "提前结束待核实"
+                business.add_event(
+                    conn, order_id, label, user, "in_progress", "completion_review",
+                    f"申报 {business.format_dt(proposed)} · {reason}",
+                )
+                self._queue_time_review(conn, order, review_id, label)
+                conn.commit()
+                return 200, "review"
+            stamp = business.format_dt(proposed)
             conn.execute(
                 "UPDATE orders SET status='completed',done_at=?,done_note=?,version=version+1 WHERE id=?",
                 (stamp, note[:300], order_id),
@@ -376,6 +527,12 @@ class DispatchService:
             business.close_active_transfers(conn, order_id)
             self._release_worker(conn, order["assignee_id"])
             business.add_event(conn, order_id, "完成工单", user, "in_progress", "completed", note[:300])
+            if order["creator_id"]:
+                business.queue_notification(
+                    conn, order["creator_id"],
+                    f"跟播已结束：#{order_id} {order['team']} · {order['task_type']} · {stamp}；如时间不正确请在工单详情中反馈",
+                    f"order:{order_id}:completed:creator:v{order['version']}",
+                )
             if order["feishu_task_guid"]:
                 business.queue_task_operation(
                     conn, "task_delete", "", {"guid": order["feishu_task_guid"], "order_id": order_id},
@@ -386,12 +543,254 @@ class DispatchService:
         finally:
             conn.close()
 
+    def dispute_completion(self, user, body):
+        order_id = self._record_id(body.get("order_id"))
+        reason = (body.get("reason") or "").strip()
+        if not order_id:
+            return 400, "非法工单编号"
+        if not reason:
+            return 400, "请说明结束时间有什么问题"
+        conn = self.db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            if not order:
+                return 404, "工单不存在"
+            if user["role"] != "team" or int(order["team_id"] or 0) != business.bound_team_id(user):
+                return 403, "只有该团队的账号可以提出异议"
+            if order["status"] != "completed" or not order["done_at"]:
+                return 409, "只有已完成订单可以提出结束异议"
+            if business.active_time_review(conn, order_id):
+                return 409, "该订单已有待处理的时间异议"
+            proposed = business.parse_dt(order["done_at"])
+            review_id = self._create_time_review(
+                conn, order, user, "team_dispute", proposed, note=order["done_note"],
+                reason=reason, original_at=order["done_at"],
+            )
+            business.add_event(
+                conn, order_id, "团队提出结束异议", user, "completed", "completed", reason
+            )
+            self._queue_time_review(conn, order, review_id, "团队提出结束异议")
+            conn.commit()
+            return 200, None
+        finally:
+            conn.close()
+
+    def resolve_time_review(self, user, body):
+        review_id = self._record_id(body.get("review_id"))
+        decision = (body.get("decision") or "").strip()
+        resolution_note = (body.get("note") or "").strip()
+        corrected = self._timestamp(body.get("corrected_at"))
+        if not review_id:
+            return 400, "非法核实编号"
+        if decision not in ("approve", "reject", "reopen"):
+            return 400, "处理结果无效"
+        if not resolution_note:
+            return 400, "处理时间核实必须填写说明"
+        conn = self.db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            review = conn.execute("SELECT * FROM time_reviews WHERE id=?", (review_id,)).fetchone()
+            if not review:
+                return 404, "时间核实记录不存在"
+            if review["status"] != "pending":
+                return 409, "该时间核实已经处理"
+            order = conn.execute("SELECT * FROM orders WHERE id=?", (review["order_id"],)).fetchone()
+            if not order:
+                return 404, "工单不存在"
+            if not business.can_manage_order(user, order):
+                return 403, "只有本组组长或管理员可以处理"
+            stamp = business.now_iso()
+            proposed = corrected or business.parse_dt(review["proposed_at"])
+
+            if review["kind"] == "retro_start":
+                if order["status"] != "assigned" or order["started_at"]:
+                    return 409, "工单开始状态已经变化"
+                if decision == "reopen":
+                    return 400, "补报开始不支持重新打开"
+                if decision == "approve":
+                    created = business.parse_dt(order["created_at"])
+                    if not proposed or proposed > datetime.now() or (created and proposed < created):
+                        return 400, "核实后的开始时间无效"
+                    active = self._worker_has_open_session(conn, review["worker_id"], order["id"])
+                    if active:
+                        return 409, f"该人员已有进行中的工单 #{active['order_id']}"
+                    conflict = self._session_overlap(
+                        conn, review["worker_id"], proposed, datetime.now()
+                    )
+                    if conflict:
+                        return 409, f"核实时间与工单 #{conflict['order_id']} 的工作时段重叠"
+                    conn.execute(
+                        "UPDATE orders SET status='in_progress',started_at=?,version=version+1 WHERE id=? AND status='assigned'",
+                        (business.format_dt(proposed), order["id"]),
+                    )
+                    conn.execute(
+                        "INSERT INTO work_sessions(order_id,worker_id,started_at) VALUES(?,?,?)",
+                        (order["id"], review["worker_id"], business.format_dt(proposed)),
+                    )
+                    conn.execute(
+                        "UPDATE users SET status='busy',task=? WHERE open_id=?",
+                        (f"{order['team']} · {order['room']}", review["worker_id"]),
+                    )
+                    business.add_event(
+                        conn, order["id"], "确认补报开始", user, "assigned", "in_progress",
+                        f"{business.format_dt(proposed)} · {resolution_note}",
+                    )
+                else:
+                    business.add_event(
+                        conn, order["id"], "驳回补报开始", user, "assigned", "assigned", resolution_note
+                    )
+
+            elif review["kind"] in ("early_end", "retro_end"):
+                if order["status"] != "completion_review":
+                    return 409, "工单结束核实状态已经变化"
+                if decision == "reopen":
+                    decision = "reject"
+                if decision == "approve":
+                    session = self._open_session(conn, order["id"], review["worker_id"])
+                    started = business.parse_dt(session["started_at"]) if session else None
+                    if not session or not proposed or proposed < started or proposed > datetime.now():
+                        return 400, "核实后的结束时间无效"
+                    conflict = self._session_overlap(
+                        conn, review["worker_id"], started, proposed, session["id"]
+                    )
+                    if conflict:
+                        return 409, f"核实时间与工单 #{conflict['order_id']} 的工作时段重叠"
+                    conn.execute(
+                        "UPDATE orders SET status='completed',done_at=?,done_note=?,version=version+1 WHERE id=?",
+                        (business.format_dt(proposed), review["note"][:300], order["id"]),
+                    )
+                    conn.execute(
+                        "UPDATE work_sessions SET ended_at=?,end_reason='completed' WHERE id=?",
+                        (business.format_dt(proposed), session["id"]),
+                    )
+                    business.close_active_transfers(conn, order["id"])
+                    self._release_worker(conn, review["worker_id"])
+                    business.add_event(
+                        conn, order["id"], "确认结束时间", user, "completion_review", "completed",
+                        f"{business.format_dt(proposed)} · {resolution_note}",
+                    )
+                    if order["feishu_task_guid"]:
+                        business.queue_task_operation(
+                            conn, "task_delete", "",
+                            {"guid": order["feishu_task_guid"], "order_id": order["id"]},
+                            f"order:{order['id']}:task-delete:review:{review_id}",
+                        )
+                else:
+                    conn.execute(
+                        "UPDATE orders SET status='in_progress',version=version+1 WHERE id=? AND status='completion_review'",
+                        (order["id"],),
+                    )
+                    business.add_event(
+                        conn, order["id"], "驳回结束申请", user, "completion_review", "in_progress",
+                        resolution_note,
+                    )
+                    business.queue_notification(
+                        conn, review["worker_id"],
+                        f"结束申请被驳回：#{order['id']} {order['team']}；{resolution_note}",
+                        f"time-review:{review_id}:rejected:worker",
+                    )
+
+            elif review["kind"] == "team_dispute":
+                if order["status"] != "completed":
+                    return 409, "工单完成状态已经变化"
+                if decision == "reopen":
+                    active = self._worker_has_open_session(conn, review["worker_id"], order["id"])
+                    if active:
+                        return 409, f"负责人已经在执行工单 #{active['order_id']}，不能直接重新打开"
+                    session = conn.execute(
+                        "SELECT * FROM work_sessions WHERE order_id=? AND worker_id=? ORDER BY id DESC LIMIT 1",
+                        (order["id"], review["worker_id"]),
+                    ).fetchone()
+                    if not session:
+                        return 409, "找不到可以重新打开的工作时段"
+                    started = business.parse_dt(session["started_at"])
+                    conflict = self._session_overlap(
+                        conn, review["worker_id"], started, datetime.now(), session["id"]
+                    ) if started else None
+                    if conflict:
+                        return 409, f"重新打开会与工单 #{conflict['order_id']} 的工作时段重叠，请改为修正结束时间"
+                    conn.execute(
+                        "UPDATE work_sessions SET ended_at='',end_reason='' WHERE id=?", (session["id"],)
+                    )
+                    conn.execute(
+                        "UPDATE orders SET status='in_progress',done_at='',done_note='',version=version+1 WHERE id=?",
+                        (order["id"],),
+                    )
+                    conn.execute(
+                        "UPDATE users SET status='busy',task=? WHERE open_id=?",
+                        (f"{order['team']} · {order['room']}", review["worker_id"]),
+                    )
+                    business.add_event(
+                        conn, order["id"], "根据团队异议重新打开", user, "completed", "in_progress",
+                        resolution_note,
+                    )
+                    worker = conn.execute(
+                        "SELECT * FROM users WHERE open_id=?", (review["worker_id"],)
+                    ).fetchone()
+                    if worker:
+                        reopened = self._order_dict(
+                            conn.execute("SELECT * FROM orders WHERE id=?", (order["id"],)).fetchone()
+                        )
+                        self._queue_assignment(conn, reopened, worker, "工单已重新打开")
+                elif decision == "approve":
+                    session = conn.execute(
+                        "SELECT * FROM work_sessions WHERE order_id=? AND worker_id=? ORDER BY id DESC LIMIT 1",
+                        (order["id"], review["worker_id"]),
+                    ).fetchone()
+                    started = business.parse_dt(session["started_at"]) if session else None
+                    if not session or not proposed or proposed < started or proposed > datetime.now():
+                        return 400, "修正后的结束时间无效"
+                    conflict = self._session_overlap(
+                        conn, review["worker_id"], started, proposed, session["id"]
+                    )
+                    if conflict:
+                        return 409, f"修正时间与工单 #{conflict['order_id']} 的工作时段重叠"
+                    conn.execute("UPDATE orders SET done_at=?,version=version+1 WHERE id=?", (business.format_dt(proposed), order["id"]))
+                    conn.execute("UPDATE work_sessions SET ended_at=? WHERE id=?", (business.format_dt(proposed), session["id"]))
+                    business.add_event(
+                        conn, order["id"], "修正结束时间", user, "completed", "completed",
+                        f"{review['original_at']} → {business.format_dt(proposed)} · {resolution_note}",
+                    )
+                else:
+                    business.add_event(
+                        conn, order["id"], "驳回团队异议", user, "completed", "completed", resolution_note
+                    )
+
+            review_status = "approved" if decision in ("approve", "reopen") else "rejected"
+            changed = conn.execute(
+                """UPDATE time_reviews SET status=?,resolved_by=?,resolved_name=?,resolved_at=?,
+                   resolution_note=? WHERE id=? AND status='pending'""",
+                (review_status, user["open_id"], user["name"], stamp, resolution_note[:500], review_id),
+            ).rowcount
+            if changed != 1:
+                return 409, "该时间核实已被其他人处理"
+            result_label = {
+                "approve": "已确认",
+                "reject": "已驳回",
+                "reopen": "已重新打开",
+            }[decision]
+            recipients = {review["requested_by"], review["worker_id"], order["creator_id"]}
+            for recipient in recipients:
+                if recipient and recipient != user["open_id"]:
+                    business.queue_notification(
+                        conn,
+                        recipient,
+                        f"时间核实{result_label}：#{order['id']} {order['team']} · {resolution_note}",
+                        f"time-review:{review_id}:resolved:{recipient}",
+                    )
+            conn.commit()
+            return 200, None
+        finally:
+            conn.close()
+
     @staticmethod
     def _release_worker(conn, open_id):
         if not open_id:
             return
         active = conn.execute(
-            "SELECT team,room FROM orders WHERE assignee_id=? AND status='in_progress' ORDER BY started_at,id LIMIT 1",
+            """SELECT team,room FROM orders WHERE assignee_id=?
+               AND status IN ('in_progress','completion_review') ORDER BY started_at,id LIMIT 1""",
             (open_id,),
         ).fetchone()
         if active:
@@ -483,15 +882,13 @@ class DispatchService:
             if user["role"] == "team":
                 if order["creator_id"] != user["open_id"] or int(order["team_id"] or 0) != business.bound_team_id(user):
                     return 403, "只能取消自己创建的本团队订单"
-                if order["status"] == "in_progress":
+                if order["status"] in ("in_progress", "completion_review"):
                     return 409, "任务已经开始，请联系组长处理"
             elif not business.can_manage_order(user, order):
                 return 403, "无权取消该订单"
-            if order["status"] == "in_progress" and user["role"] != "admin":
-                return 409, "进行中的订单只能由管理员异常终止"
             stamp = business.now_iso()
             old_status = order["status"]
-            terminal_status = "abnormal" if old_status == "in_progress" else "cancelled"
+            terminal_status = "abnormal" if old_status in ("in_progress", "completion_review") else "cancelled"
             if terminal_status == "abnormal":
                 conn.execute(
                     """UPDATE orders SET status='abnormal',abnormal_at=?,abnormal_reason=?,
@@ -507,6 +904,11 @@ class DispatchService:
             conn.execute(
                 "UPDATE work_sessions SET ended_at=?,end_reason=? WHERE order_id=? AND ended_at=''",
                 (stamp, terminal_status, order_id),
+            )
+            conn.execute(
+                """UPDATE time_reviews SET status='withdrawn',resolved_by=?,resolved_name=?,resolved_at=?,
+                   resolution_note=? WHERE order_id=? AND status='pending'""",
+                (user["open_id"], user["name"], stamp, reason[:500], order_id),
             )
             business.close_active_transfers(conn, order_id)
             self._release_worker(conn, order["assignee_id"])
@@ -592,7 +994,7 @@ class DispatchService:
             if target_id != user["open_id"] and not business.is_manager(user, target["grp"]):
                 return 403, "只能修改自己或本组成员状态"
             active = conn.execute(
-                "SELECT COUNT(*) count FROM orders WHERE assignee_id=? AND status='in_progress'", (target_id,)
+                "SELECT COUNT(*) count FROM work_sessions WHERE worker_id=? AND ended_at=''", (target_id,)
             ).fetchone()["count"]
             if active and status != "busy":
                 return 409, "该人员有正在执行的订单，不能切换到其他状态"

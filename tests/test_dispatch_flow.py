@@ -30,13 +30,35 @@ class DispatchFlowTests(unittest.TestCase):
 
     def setUp(self):
         conn = server.db()
+        conn.execute("DELETE FROM time_reviews")
         conn.execute("DELETE FROM work_sessions")
         conn.execute("DELETE FROM transfers")
         conn.execute("DELETE FROM order_events")
         conn.execute("DELETE FROM uploads")
         conn.execute("DELETE FROM orders")
         conn.execute("DELETE FROM notification_outbox")
-        conn.execute("UPDATE users SET status='free',task='' WHERE open_id LIKE 'test:%'")
+        conn.execute(
+            """UPDATE users SET status='free',task='',approved=1,blocked=0,read_only=0,
+                      absence_type='',absence_start='',absence_end=''
+               WHERE open_id LIKE 'test:%'"""
+        )
+        for profile in server.TEST_PROFILES.values():
+            conn.execute(
+                """UPDATE users SET role=?,grp=?,lead=?,intern=0
+                   WHERE open_id=?""",
+                (
+                    profile["role"],
+                    profile.get("grp", ""),
+                    profile.get("lead", 0),
+                    profile["open_id"],
+                ),
+            )
+        conn.execute(
+            """UPDATE users SET team_id=(SELECT id FROM teams ORDER BY id LIMIT 1)
+               WHERE open_id='test:team'"""
+        )
+        conn.execute("DELETE FROM sessions WHERE open_id='test:outside'")
+        conn.execute("DELETE FROM users WHERE open_id='test:outside'")
         conn.commit()
         conn.close()
         self.admin = self.user("test:admin")
@@ -72,6 +94,133 @@ class DispatchFlowTests(unittest.TestCase):
             body["team_id"] = self.team_row["id"]
         return body
 
+    def test_account_admission_blocking_and_session_revocation(self):
+        conn = server.db()
+        self.assertEqual(
+            conn.execute("SELECT v FROM settings WHERE k='gate_mode'").fetchone()["v"],
+            "manual",
+        )
+        conn.execute(
+            """INSERT INTO users(open_id,name,role,approved,blocked,read_only,created_at,last_login)
+               VALUES('test:outside','成都分公司账号','team',0,0,0,?,?)""",
+            (server.now_iso(), server.now_iso()),
+        )
+        conn.commit()
+        outside = dict(conn.execute("SELECT * FROM users WHERE open_id='test:outside'").fetchone())
+        conn.close()
+
+        self.assertIsNone(server.apply_login_gate(outside["open_id"], outside["name"]))
+        self.assertFalse(server.Handler._approved(outside))
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {"entity": "users", "record": {"open_id": outside["open_id"], "approved": "1"}},
+            ),
+            (200, None),
+        )
+        sid = server.new_session(outside["open_id"])
+        self.assertIsNotNone(server.session_user(sid))
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {"entity": "users", "record": {"open_id": outside["open_id"], "blocked": "1"}},
+            ),
+            (200, None),
+        )
+        self.assertIsNone(server.session_user(sid))
+        blocked = self.user(outside["open_id"])
+        self.assertFalse(server.Handler._approved(blocked))
+        self.assertIn("未获准使用", server.apply_login_gate(blocked["open_id"], blocked["name"]))
+
+    def test_management_read_only_sees_admin_state_without_write_permission(self):
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.team["open_id"],
+                        "role": "admin",
+                        "read_only": "1",
+                        "approved": "1",
+                    },
+                },
+            ),
+            (200, None),
+        )
+        manager = self.user(self.team["open_id"])
+        state = server.api_state(manager)
+        self.assertEqual(state["me"]["read_only"], 1)
+        self.assertIn("users", state)
+        self.assertTrue(server.Handler._approved(manager))
+        self.assertFalse(server.Handler._can_write(manager))
+        self.assertTrue(server.Handler._can_write(self.admin))
+
+    def test_business_trip_blocks_assignment_and_conflicting_trip_is_rejected(self):
+        trip_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.staff["open_id"],
+                        "absence_type": "travel",
+                        "absence_start": trip_date,
+                        "absence_end": trip_date,
+                    },
+                },
+            ),
+            (200, None),
+        )
+        state = server.api_state(self.admin)
+        staff = next(item for item in state["staff"] if item["open_id"] == self.staff["open_id"])
+        self.assertEqual(staff["absence_type"], "travel")
+
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)
+        order = self.latest_order()
+        code, message = server.SERVICE.assign(
+            self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("出差", message)
+
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.staff["open_id"],
+                        "absence_type": "",
+                        "absence_start": "",
+                        "absence_end": "",
+                    },
+                },
+            ),
+            (200, None),
+        )
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        code, message = server.do_save(
+            self.admin,
+            {
+                "entity": "users",
+                "record": {
+                    "open_id": self.staff["open_id"],
+                    "absence_type": "travel",
+                    "absence_start": trip_date,
+                    "absence_end": trip_date,
+                },
+            },
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("先改派", message)
+
     def create_running_order(self):
         body = {
             "team_id": self.team_row["id"],
@@ -94,6 +243,13 @@ class DispatchFlowTests(unittest.TestCase):
     def latest_order():
         conn = server.db()
         row = dict(conn.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 1").fetchone())
+        conn.close()
+        return row
+
+    @staticmethod
+    def latest_review():
+        conn = server.db()
+        row = dict(conn.execute("SELECT * FROM time_reviews ORDER BY id DESC LIMIT 1").fetchone())
         conn.close()
         return row
 
@@ -156,6 +312,34 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 409)
         self.assertIn("提前", message)
 
+    def test_worker_must_be_available_when_starting_assigned_order(self):
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "now",
+        }
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        self.assertEqual(
+            server.SERVICE.tech_status(self.staff, {"status": "rest", "task": ""}),
+            (200, None),
+        )
+        code, message = server.SERVICE.start(self.staff, {"order_id": order["id"]})
+        self.assertEqual(code, 409)
+        self.assertIn("小休", message)
+        self.assertEqual(
+            server.SERVICE.tech_status(self.staff, {"status": "free", "task": ""}),
+            (200, None),
+        )
+        self.assertEqual(server.SERVICE.start(self.staff, {"order_id": order["id"]}), (200, None))
+
     def test_state_machine_and_transfer_handoff(self):
         body = {
             "team_id": self.team_row["id"],
@@ -194,7 +378,22 @@ class DispatchFlowTests(unittest.TestCase):
         )
         self.assertEqual(code, 409)
         self.assertIn("历史负责人", message)
-        self.assertEqual(server.SERVICE.complete(self.lead, {"order_id": order["id"], "note": "任务完成"})[0], 200)
+        self.assertEqual(
+            server.SERVICE.complete(
+                self.lead,
+                {"order_id": order["id"], "note": "任务完成", "reason": "现场提前结束"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "completion_review")
+        review = self.latest_review()
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.admin,
+                {"review_id": review["id"], "decision": "approve", "note": "现场确认结束"},
+            )[0],
+            200,
+        )
         self.assertEqual(self.latest_order()["status"], "completed")
         conn = server.db()
         sessions = conn.execute("SELECT * FROM work_sessions WHERE order_id=? ORDER BY id", (order["id"],)).fetchall()
@@ -202,6 +401,226 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(len(sessions), 2)
         self.assertEqual(sessions[0]["end_reason"], "transferred")
         self.assertEqual(sessions[1]["end_reason"], "completed")
+        code, stats = server.api_stats(self.admin, {"range": "all"})
+        self.assertEqual(code, 200)
+        names = {item["open_id"] for item in stats["byPerson"]}
+        self.assertIn(self.staff["open_id"], names)
+        self.assertIn(self.lead["open_id"], names)
+
+    def test_early_end_waits_for_manager_without_releasing_worker(self):
+        order = self.create_running_order()
+        code, marker = server.SERVICE.complete(
+            self.staff,
+            {"order_id": order["id"], "note": "现场提前收工", "reason": "比赛提前结束"},
+        )
+        self.assertEqual((code, marker), (200, "review"))
+        self.assertEqual(self.latest_order()["status"], "completion_review")
+        conn = server.db()
+        worker = conn.execute("SELECT status FROM users WHERE open_id=?", (self.staff["open_id"],)).fetchone()
+        session = conn.execute(
+            "SELECT ended_at FROM work_sessions WHERE order_id=? ORDER BY id DESC LIMIT 1", (order["id"],)
+        ).fetchone()
+        conn.close()
+        self.assertEqual(worker["status"], "busy")
+        self.assertEqual(session["ended_at"], "")
+
+        review = self.latest_review()
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.lead,
+                {"review_id": review["id"], "decision": "approve", "note": "已联系直播间确认"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "completed")
+        conn = server.db()
+        worker = conn.execute("SELECT status FROM users WHERE open_id=?", (self.staff["open_id"],)).fetchone()
+        session = conn.execute(
+            "SELECT ended_at FROM work_sessions WHERE order_id=? ORDER BY id DESC LIMIT 1", (order["id"],)
+        ).fetchone()
+        conn.close()
+        self.assertEqual(worker["status"], "free")
+        self.assertTrue(session["ended_at"])
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.admin,
+                {"review_id": review["id"], "decision": "approve", "note": "重复处理"},
+            )[0],
+            409,
+        )
+
+    def test_rejected_early_end_returns_to_running(self):
+        order = self.create_running_order()
+        self.assertEqual(
+            server.SERVICE.complete(
+                self.staff,
+                {"order_id": order["id"], "note": "申请结束", "reason": "误以为比赛结束"},
+            )[0],
+            200,
+        )
+        review = self.latest_review()
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.lead,
+                {"review_id": review["id"], "decision": "reject", "note": "比赛仍在继续"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "in_progress")
+        conn = server.db()
+        open_session = conn.execute(
+            "SELECT 1 FROM work_sessions WHERE order_id=? AND ended_at=''", (order["id"],)
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(open_session)
+
+    def test_retro_start_requires_review_before_timing(self):
+        body = {"team_id": self.team_row["id"], "group": "灯光组", "task": self.task, "when": "now"}
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        started_at = server.business.format_dt(datetime.now())
+        self.assertEqual(
+            server.SERVICE.report_start(
+                self.staff,
+                {"order_id": order["id"], "started_at": started_at, "reason": "到岗后忘记点开始"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "assigned")
+        review = self.latest_review()
+        self.assertEqual(review["kind"], "retro_start")
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.lead,
+                {"review_id": review["id"], "decision": "approve", "note": "现场确认已到岗"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "in_progress")
+
+    def test_team_can_dispute_and_manager_reopen_completed_order(self):
+        order = self.create_running_order()
+        self.assertEqual(
+            server.SERVICE.complete(
+                self.staff,
+                {"order_id": order["id"], "note": "已结束", "reason": "比赛提前结束"},
+            )[0],
+            200,
+        )
+        review = self.latest_review()
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.lead,
+                {"review_id": review["id"], "decision": "approve", "note": "当时确认结束"},
+            )[0],
+            200,
+        )
+        self.assertEqual(
+            server.SERVICE.dispute_completion(
+                self.team, {"order_id": order["id"], "reason": "比赛实际仍在继续"}
+            )[0],
+            200,
+        )
+        dispute = self.latest_review()
+        self.assertEqual(dispute["kind"], "team_dispute")
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.admin,
+                {"review_id": dispute["id"], "decision": "reopen", "note": "团队和负责人均确认未结束"},
+            )[0],
+            200,
+        )
+        self.assertEqual(self.latest_order()["status"], "in_progress")
+
+    def test_time_correction_cannot_overlap_a_later_work_session(self):
+        first = self.create_running_order()
+        first_started = server.business.format_dt(datetime.now() - timedelta(hours=2))
+        first_ended = server.business.format_dt(datetime.now() - timedelta(hours=1))
+        conn = server.db()
+        conn.execute("UPDATE orders SET started_at=? WHERE id=?", (first_started, first["id"]))
+        conn.execute(
+            "UPDATE work_sessions SET started_at=? WHERE order_id=? AND ended_at=''",
+            (first_started, first["id"]),
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(
+            server.SERVICE.complete(
+                self.staff,
+                {
+                    "order_id": first["id"],
+                    "ended_at": first_ended,
+                    "note": "第一场结束",
+                    "reason": "忘记及时点结束",
+                },
+            )[0],
+            200,
+        )
+        review = self.latest_review()
+        self.assertEqual(
+            server.SERVICE.resolve_time_review(
+                self.lead,
+                {"review_id": review["id"], "decision": "approve", "note": "已核对第一场结束时间"},
+            )[0],
+            200,
+        )
+
+        second = self.create_running_order()
+        second_started = server.business.format_dt(datetime.now() - timedelta(seconds=30))
+        conn = server.db()
+        conn.execute("UPDATE orders SET started_at=? WHERE id=?", (second_started, second["id"]))
+        conn.execute(
+            "UPDATE work_sessions SET started_at=? WHERE order_id=? AND ended_at=''",
+            (second_started, second["id"]),
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(
+            server.SERVICE.dispute_completion(
+                self.team, {"order_id": first["id"], "reason": "结束时间需要重新核对"}
+            )[0],
+            200,
+        )
+        dispute = self.latest_review()
+        code, message = server.SERVICE.resolve_time_review(
+            self.admin,
+            {
+                "review_id": dispute["id"],
+                "decision": "approve",
+                "corrected_at": server.business.now_iso(),
+                "note": "尝试延长到第二场开始之后",
+            },
+        )
+        self.assertEqual(code, 409)
+        self.assertIn(f"#{second['id']}", message)
+        self.assertEqual(self.latest_review()["status"], "pending")
+
+    def test_long_overtime_only_reminds_and_never_auto_closes(self):
+        order = self.create_running_order()
+        old = server.business.format_dt(datetime.now() - timedelta(hours=8))
+        conn = server.db()
+        conn.execute(
+            "UPDATE orders SET started_at=?,minutes=30,overrun_notified=0 WHERE id=?", (old, order["id"])
+        )
+        conn.execute("UPDATE work_sessions SET started_at=? WHERE order_id=?", (old, order["id"]))
+        conn.commit()
+        conn.close()
+        server.run_scheduled_jobs()
+        updated = self.latest_order()
+        self.assertEqual(updated["status"], "in_progress")
+        self.assertEqual(updated["overrun_notified"], 1)
+        conn = server.db()
+        open_session = conn.execute(
+            "SELECT 1 FROM work_sessions WHERE order_id=? AND ended_at=''", (order["id"],)
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(open_session)
 
     def test_repeated_transfers_require_lead_approval(self):
         for index, hour in enumerate((15, 16, 17)):
@@ -237,6 +656,20 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(stats["byPerson"], [])
         self.assertEqual(stats["summary"]["people"], 0)
+
+    def test_worker_skill_matrix_is_fully_removed(self):
+        conn = server.db()
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='worker_skills'"
+        ).fetchone()
+        conn.close()
+        self.assertIsNone(table)
+        self.assertNotIn("skills", server.api_state(self.admin))
+        page_source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
+        server_source = (Path(server.ROOT) / "server.py").read_text(encoding="utf-8")
+        self.assertNotIn("人员能力矩阵", page_source)
+        self.assertNotIn("state.skills", page_source)
+        self.assertNotIn("/api/skills", server_source)
 
     def test_running_transfer_requires_currently_available_target(self):
         order = self.create_running_order()

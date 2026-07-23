@@ -9,12 +9,13 @@ ORDER_STATUS = (
     "pending",
     "assigned",
     "in_progress",
+    "completion_review",
     "completed",
     "cancelled",
     "abnormal",
 )
-ACTIVE_ORDER_STATUS = ("assigned", "in_progress")
-VISIBLE_ORDER_STATUS = ("pending", "assigned", "in_progress")
+ACTIVE_ORDER_STATUS = ("assigned", "in_progress", "completion_review")
+VISIBLE_ORDER_STATUS = ("pending", "assigned", "in_progress", "completion_review")
 TRANSFER_REASON = (
     "临时生病",
     "家庭急事",
@@ -26,6 +27,10 @@ TRANSFER_REASON = (
     "其他紧急情况",
 )
 TRANSFER_STATUS = ("awaiting_lead", "open", "accepted", "rejected", "withdrawn", "expired")
+TIME_REVIEW_KIND = ("early_end", "retro_start", "retro_end", "team_dispute")
+TIME_REVIEW_STATUS = ("pending", "approved", "rejected", "withdrawn")
+ABSENCE_TYPES = ("leave", "travel")
+ABSENCE_LABELS = {"leave": "请假", "travel": "出差"}
 
 
 def table_columns(conn, table):
@@ -99,14 +104,7 @@ def migrate(conn):
           FOREIGN KEY(owner_id) REFERENCES users(open_id),
           FOREIGN KEY(order_id) REFERENCES orders(id)
         );
-        CREATE TABLE IF NOT EXISTS worker_skills(
-          open_id TEXT NOT NULL,
-          grp TEXT NOT NULL,
-          task_type TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          PRIMARY KEY(open_id,grp,task_type),
-          FOREIGN KEY(open_id) REFERENCES users(open_id)
-        );
+        DROP TABLE IF EXISTS worker_skills;
         CREATE TABLE IF NOT EXISTS work_sessions(
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           order_id INTEGER NOT NULL,
@@ -114,6 +112,26 @@ def migrate(conn):
           started_at TEXT NOT NULL,
           ended_at TEXT DEFAULT '',
           end_reason TEXT DEFAULT '',
+          FOREIGN KEY(order_id) REFERENCES orders(id),
+          FOREIGN KEY(worker_id) REFERENCES users(open_id)
+        );
+        CREATE TABLE IF NOT EXISTS time_reviews(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          order_id INTEGER NOT NULL,
+          worker_id TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          proposed_at TEXT DEFAULT '',
+          original_at TEXT DEFAULT '',
+          note TEXT DEFAULT '',
+          reason TEXT DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending',
+          requested_by TEXT NOT NULL,
+          requested_name TEXT NOT NULL,
+          requested_at TEXT NOT NULL,
+          resolved_by TEXT DEFAULT '',
+          resolved_name TEXT DEFAULT '',
+          resolved_at TEXT DEFAULT '',
+          resolution_note TEXT DEFAULT '',
           FOREIGN KEY(order_id) REFERENCES orders(id),
           FOREIGN KEY(worker_id) REFERENCES users(open_id)
         );
@@ -139,6 +157,8 @@ def migrate(conn):
         CREATE INDEX IF NOT EXISTS idx_transfers_order_status ON transfers(order_id,status);
         CREATE INDEX IF NOT EXISTS idx_uploads_owner_status ON uploads(owner_id,status);
         CREATE INDEX IF NOT EXISTS idx_work_sessions_order ON work_sessions(order_id,id);
+        CREATE INDEX IF NOT EXISTS idx_time_reviews_order ON time_reviews(order_id,id);
+        CREATE INDEX IF NOT EXISTS idx_time_reviews_status ON time_reviews(status,kind,id);
         CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON notification_outbox(status,available_at,id);
         """
     )
@@ -148,7 +168,17 @@ def migrate(conn):
         {
             "team_id": "INTEGER",
             "last_assigned_at": "TEXT DEFAULT ''",
+            "absence_type": "TEXT DEFAULT ''",
+            "absence_start": "TEXT DEFAULT ''",
+            "absence_end": "TEXT DEFAULT ''",
         },
+    )
+    today_text = datetime.now().strftime("%Y-%m-%d")
+    conn.execute(
+        """UPDATE users
+           SET absence_type='leave',absence_start=?,absence_end=leave_until
+           WHERE COALESCE(absence_type,'')='' AND COALESCE(leave_until,'')>=?""",
+        (today_text, today_text),
     )
     ensure_columns(
         conn,
@@ -204,17 +234,9 @@ def migrate(conn):
                 (format_dt(start), format_dt(end), order["id"]),
             )
 
-    # 现有工作人员默认具备本组现有任务能力，管理员后续可以收窄。
     stamp = now_iso()
     conn.execute(
-        """INSERT OR IGNORE INTO worker_skills(open_id,grp,task_type,created_at)
-           SELECT users.open_id,sla.grp,sla.task_type,?
-           FROM users JOIN sla ON sla.grp=users.grp
-           WHERE users.role!='team' AND COALESCE(users.intern,0)=0""",
-        (stamp,),
-    )
-    conn.execute(
-        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','2',?)",
+        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','5',?)",
         (stamp,),
     )
 
@@ -320,6 +342,15 @@ def can_manage_order(user, order):
     return is_manager(user, order["grp"])
 
 
+def absence_type_on(user, order_date):
+    absence_type = str(user["absence_type"] or "")
+    start = str(user["absence_start"] or "")
+    end = str(user["absence_end"] or "")
+    if absence_type in ABSENCE_TYPES and start and end and start <= order_date <= end:
+        return absence_type
+    return ""
+
+
 def add_event(conn, order_id, event_type, user, from_status="", to_status="", detail=""):
     conn.execute(
         """INSERT INTO order_events(
@@ -358,8 +389,11 @@ def assignment_block(conn, worker, order, ignore_order_id=None, require_availabl
         return f"{display_name(worker)} 是实习成员，不可独立派单"
     if not worker["approved"]:
         return f"{display_name(worker)} 尚未通过账号审核"
-    if worker["leave_until"] and worker["leave_until"] >= order["date"]:
-        return f"{display_name(worker)} 当天请假"
+    if worker["blocked"]:
+        return f"{display_name(worker)} 的账号已被禁止访问"
+    absence_type = absence_type_on(worker, order["date"])
+    if absence_type:
+        return f"{display_name(worker)} 当天{ABSENCE_LABELS[absence_type]}"
 
     shift = conn.execute("SELECT start,end FROM shifts WHERE name=?", (worker["shift"] or "",)).fetchone()
     if not shift:
@@ -376,20 +410,10 @@ def assignment_block(conn, worker, order, ignore_order_id=None, require_availabl
     if start < shift_start or end > shift_end:
         return f"订单 {start:%H:%M}–{end:%H:%M} 超出 {display_name(worker)} 的班次"
 
-    skill_exists = conn.execute(
-        "SELECT 1 FROM worker_skills WHERE open_id=? AND grp=? AND task_type=?",
-        (worker["open_id"], grp, order["task_type"]),
-    ).fetchone()
-    is_known_task = conn.execute(
-        "SELECT 1 FROM sla WHERE grp=? AND task_type=?", (grp, order["task_type"])
-    ).fetchone()
-    if is_known_task and not skill_exists:
-        return f"{display_name(worker)} 尚未配置“{order['task_type']}”能力"
-
     args = [worker["open_id"], format_dt(end), format_dt(start)]
     sql = (
         "SELECT id,team,scheduled_start,scheduled_end FROM orders "
-        "WHERE assignee_id=? AND status IN ('assigned','in_progress') "
+        "WHERE assignee_id=? AND status IN ('assigned','in_progress','completion_review') "
         "AND scheduled_start<? AND scheduled_end>?"
     )
     if ignore_order_id:
@@ -416,7 +440,8 @@ def display_name(user):
 def eligible_workers(conn, order, ignore_order_id=None):
     result = []
     rows = conn.execute(
-        "SELECT * FROM users WHERE grp=? AND role!='team' AND COALESCE(approved,0)=1",
+        """SELECT * FROM users WHERE grp=? AND role!='team'
+           AND COALESCE(approved,0)=1 AND COALESCE(blocked,0)=0""",
         (order["grp"],),
     ).fetchall()
     start, _ = order_bounds(order)
@@ -440,13 +465,13 @@ def fair_assignee(conn, order):
         day_load = conn.execute(
             """SELECT COALESCE(SUM(minutes),0) minutes,COUNT(*) orders
                FROM orders WHERE assignee_id=? AND date=?
-               AND status IN ('assigned','in_progress','completed')""",
+               AND status IN ('assigned','in_progress','completion_review','completed')""",
             (worker["open_id"], order["date"]),
         ).fetchone()
         window_minutes = conn.execute(
             """SELECT COALESCE(SUM(minutes),0) minutes FROM orders
                WHERE assignee_id=? AND date>=? AND date<=?
-               AND status IN ('assigned','in_progress','completed')""",
+               AND status IN ('assigned','in_progress','completion_review','completed')""",
             (worker["open_id"], order["date"], window_end),
         ).fetchone()["minutes"]
         scored.append(
@@ -514,6 +539,29 @@ def close_active_transfers(conn, order_id, status="expired"):
            WHERE order_id=? AND status IN ('awaiting_lead','open')""",
         (status, stamp, order_id),
     ).rowcount
+
+
+def active_time_review(conn, order_id):
+    return conn.execute(
+        "SELECT * FROM time_reviews WHERE order_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
+        (order_id,),
+    ).fetchone()
+
+
+def attach_time_review_state(conn, orders):
+    if not orders:
+        return orders
+    ids = [order["id"] for order in orders]
+    marks = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"SELECT * FROM time_reviews WHERE order_id IN ({marks}) ORDER BY id DESC", ids
+    ).fetchall()
+    latest = {}
+    for row in rows:
+        latest.setdefault(row["order_id"], dict(row))
+    for order in orders:
+        order["time_review"] = latest.get(order["id"])
+    return orders
 
 
 def transfer_count_30d(conn, requester_id):

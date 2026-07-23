@@ -22,6 +22,7 @@ import os
 import secrets
 import shutil
 import sqlite3
+import sys
 import threading
 import time
 import urllib.error
@@ -32,13 +33,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 try:
     from . import business, service
 except ImportError:
     import business
     import service
 
-ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parent
 LEGACY_JSON = ROOT / "data.json"
 FEISHU = "https://open.feishu.cn/open-apis"
@@ -79,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0722c"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0724b"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -250,11 +254,16 @@ def init_db():
     ensure_columns(conn, "users", {"grp": "TEXT DEFAULT ''", "lead": "INTEGER DEFAULT 0",
                                     "intern": "INTEGER DEFAULT 0", "leave_until": "TEXT DEFAULT ''",
                                     "alias": "TEXT DEFAULT ''",
-                                    "approved": "INTEGER DEFAULT 0"})
+                                    "approved": "INTEGER DEFAULT 0",
+                                    "blocked": "INTEGER DEFAULT 0",
+                                    "read_only": "INTEGER DEFAULT 0"})
     # 准入门:老用户一次性放行;此后新的飞书登录默认「待审核」,管理员在人员页放行
     if conn.execute("SELECT v FROM settings WHERE k='approved_migrated'").fetchone() is None:
         conn.execute("UPDATE users SET approved=1")
         conn.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('approved_migrated','1')")
+    # 内部系统默认人工准入；旧的自动放行设置升级后立即收紧，既有已授权账号不受影响。
+    conn.execute("INSERT OR IGNORE INTO settings(k,v) VALUES('gate_mode','manual')")
+    conn.execute("UPDATE settings SET v='manual' WHERE k='gate_mode' AND v='open'")
     ensure_columns(conn, "sla", {"grp": "TEXT DEFAULT ''"})
     ensure_columns(conn, "groups", {"auto": "INTEGER DEFAULT 0"})
     # 组:种子三个组 + 历史数据归入首个组 + 空组补默认任务分类
@@ -573,16 +582,18 @@ def user_dept_ids(open_id):
 
 
 def apply_login_gate(open_id, name):
-    """登录准入。open=自动放行(自建应用只有本公司飞书账号能登录,公司外的人根本进不来);
-    dept=登录时按部门自动校验(需通讯录权限+部门ID);manual=新账号需管理员人工放行。
+    """登录准入。dept=登录时按部门自动校验(需通讯录权限+部门ID);
+    manual=新账号需管理员人工放行；被禁用账号始终拒绝。
     返回 None=放行继续登录,返回字符串=拒绝登录并显示原因。"""
-    mode = setting("gate_mode", "open")
+    mode = setting("gate_mode", "manual")
     conn = db()
     try:
-        if mode == "open":
-            conn.execute("UPDATE users SET approved=1 WHERE open_id=?", (open_id,))
-            conn.commit()
-            return None
+        account = conn.execute(
+            "SELECT COALESCE(blocked,0) blocked FROM users WHERE open_id=?", (open_id,)
+        ).fetchone()
+        if account and account["blocked"]:
+            audit_log({"open_id": open_id, "name": name}, "登录被拒", "账号已被管理员禁用")
+            return "此账号未获准使用团播派工系统。如有疑问，请联系管理员。"
         if mode == "dept":
             allow = {x.strip() for x in setting("allow_dept_ids", "").split(",") if x.strip()}
             depts = user_dept_ids(open_id) if allow else None
@@ -771,7 +782,7 @@ def _create_task_now(row, payload):
     order = conn.execute("SELECT status,assignee_id FROM orders WHERE id=?", (order_id,)).fetchone()
     conn.close()
     guid = row["external_id"] or ""
-    if not order or order["assignee_id"] != recipient_id or order["status"] not in ("assigned", "in_progress"):
+    if not order or order["assignee_id"] != recipient_id or order["status"] not in ("assigned", "in_progress", "completion_review"):
         if guid:
             result = feishu_api("DELETE", f"/task/v2/tasks/{guid}", token=tenant_token())
             if result.get("code") not in (0, None):
@@ -807,7 +818,7 @@ def _create_task_now(row, payload):
     conn = db()
     changed = conn.execute(
         """UPDATE orders SET feishu_task_guid=?
-           WHERE id=? AND assignee_id=? AND status IN ('assigned','in_progress')""",
+           WHERE id=? AND assignee_id=? AND status IN ('assigned','in_progress','completion_review')""",
         (guid, order_id, recipient_id),
     ).rowcount
     conn.commit()
@@ -979,7 +990,6 @@ def run_scheduled_jobs():
                     )
 
         remind = max(0, min(1440, int(setting("overrun_remind_min", "30") or 30)))
-        close = max(0, min(1440, int(setting("overrun_close_min", "180") or 180)))
         running = conn.execute(
             "SELECT * FROM orders WHERE status='in_progress' AND started_at!=''"
         ).fetchall()
@@ -988,39 +998,11 @@ def run_scheduled_jobs():
             if not started:
                 continue
             overdue = (now - started).total_seconds() / 60 - int(order["minutes"] or 30)
-            if close and overdue >= close:
-                conn.execute(
-                    """UPDATE orders SET status='abnormal',abnormal_at=?,abnormal_reason=?,version=version+1
-                       WHERE id=?""",
-                    (stamp, f"超过计划工时 {close} 分钟仍未完成", order["id"]),
-                )
-                conn.execute(
-                    "UPDATE work_sessions SET ended_at=?,end_reason='abnormal' WHERE order_id=? AND ended_at=''",
-                    (stamp, order["id"]),
-                )
-                SERVICE._release_worker(conn, order["assignee_id"])
-                business.close_active_transfers(conn, order["id"])
-                business.add_event(
-                    conn, order["id"], "异常终止", None, "in_progress", "abnormal",
-                    f"超过计划工时 {close} 分钟仍未完成",
-                )
-                for recipient in {order["creator_id"], order["assignee_id"]} - {"", None}:
-                    business.queue_notification(
-                        conn, recipient,
-                        f"工单已异常终止：#{order['id']} {order['team']} · {order['task_type']}，请联系管理员复核",
-                        f"order:{order['id']}:abnormal:{recipient}", urgent=True,
-                    )
-                if order["feishu_task_guid"]:
-                    business.queue_task_operation(
-                        conn, "task_delete", "",
-                        {"guid": order["feishu_task_guid"], "order_id": order["id"]},
-                        f"order:{order['id']}:task-delete:abnormal",
-                    )
-            elif remind and overdue >= remind and not order["overrun_notified"]:
+            if remind and overdue >= remind and not order["overrun_notified"]:
                 conn.execute("UPDATE orders SET overrun_notified=1 WHERE id=?", (order["id"],))
                 business.queue_notification(
                     conn, order["assignee_id"],
-                    f"任务超时提醒：#{order['id']} {order['team']} · {order['task_type']}，请确认进度",
+                    f"跟播已超过计划时间：#{order['id']} {order['team']} · {order['task_type']}；比赛未结束请继续，结束后按实际时间操作",
                     f"order:{order['id']}:overrun-reminder",
                 )
 
@@ -1191,9 +1173,10 @@ def api_state(user):
     conn = db()
     amap = alias_map(conn)
     settings = {row["k"]: row["v"] for row in conn.execute("SELECT k,v FROM settings")}
-    approved = bool(user.get("approved", 0) or user["role"] == "admin" or settings.get("gate_mode", "open") == "open")
+    approved = bool(not user.get("blocked", 0) and (user.get("approved", 0) or user["role"] == "admin"))
     me = {k: user.get(k) for k in (
-        "open_id", "name", "avatar", "role", "shift", "status", "task", "grp", "lead", "team_id"
+        "open_id", "name", "avatar", "role", "shift", "status", "task", "grp", "lead", "team_id",
+        "blocked", "read_only"
     )}
     me["fs_name"] = me["name"]
     me["name"] = amap.get(user["open_id"], me["name"])
@@ -1216,8 +1199,9 @@ def api_state(user):
         groups = all_groups
 
     staff_sql = (
-        "SELECT open_id,name,COALESCE(alias,'') alias,avatar,grp,lead,intern,leave_until,"
-        "shift,status,task,work_hours FROM users WHERE grp!='' AND role!='team'"
+        "SELECT open_id,name,COALESCE(alias,'') alias,avatar,grp,lead,intern,absence_type,absence_start,absence_end,"
+        "shift,status,task,work_hours FROM users WHERE grp!='' AND role!='team' "
+        "AND COALESCE(approved,0)=1 AND COALESCE(blocked,0)=0"
     )
     staff_args = []
     if user["role"] == "team":
@@ -1244,7 +1228,10 @@ def api_state(user):
         "SELECT id,name,start,end FROM shifts ORDER BY sort,id"
     )]
 
-    order_where = "(date=? OR status IN ('pending','assigned','in_progress'))"
+    order_where = (
+        "(date=? OR status IN ('pending','assigned','in_progress','completion_review') "
+        "OR id IN (SELECT order_id FROM time_reviews WHERE status='pending'))"
+    )
     order_args = [today()]
     if user["role"] == "team":
         order_where += " AND team_id=?"
@@ -1264,17 +1251,10 @@ def api_state(user):
         if o.get("creator_id") and o["creator_id"] in amap:
             o["creator_name"] = amap[o["creator_id"]]
     business.attach_transfer_state(conn, orders)
-    skills = []
-    if user["role"] != "team":
-        skill_sql = "SELECT open_id,grp,task_type FROM worker_skills"
-        skill_args = []
-        if user["role"] == "staff":
-            skill_sql += " WHERE grp=?"
-            skill_args.append(user.get("grp") or "")
-        skills = [dict(r) for r in conn.execute(skill_sql, skill_args)]
+    business.attach_time_review_state(conn, orders)
 
     out = {"me": me, "groups": groups, "staff": staff, "teams": teams, "sla": sla,
-           "shifts": shifts, "orders": orders, "skills": skills, "test_mode": TEST_MODE,
+           "shifts": shifts, "orders": orders, "test_mode": TEST_MODE,
            "server_version": SERVER_VERSION,
            "bootstrap_open": settings.get("bootstrap_used") != "1",
            "reminder": dict(zip(("on", "minutes"), reminder_conf())),
@@ -1289,14 +1269,15 @@ def api_state(user):
                      "done_note": settings.get("rule_done_note", "1"),
                      "nav_team": settings.get("nav_team", ""),
                      "nav_staff": settings.get("nav_staff", ""),
-                     "gate_mode": settings.get("gate_mode", "open"),
+                     "gate_mode": settings.get("gate_mode", "manual"),
                      "allow_dept_ids": settings.get("allow_dept_ids", ""),
-                     "overrun_remind_min": settings.get("overrun_remind_min", "30"),
-                     "overrun_close_min": settings.get("overrun_close_min", "180")}}
+                     "overrun_remind_min": settings.get("overrun_remind_min", "30")}}
     if user["role"] == "admin":
         out["users"] = [dict(r) for r in conn.execute(
-            """SELECT open_id,name,COALESCE(alias,'') alias,avatar,role,grp,lead,intern,leave_until,
-                      shift,status,last_login,COALESCE(approved,0) approved,team_id
+            """SELECT open_id,name,COALESCE(alias,'') alias,avatar,role,grp,lead,intern,
+                      absence_type,absence_start,absence_end,
+                      shift,status,last_login,COALESCE(approved,0) approved,
+                      COALESCE(blocked,0) blocked,COALESCE(read_only,0) read_only,team_id
                FROM users ORDER BY role DESC,grp,name""")]
         for u2 in out["users"]:
             u2["fs_name"] = u2["name"]
@@ -1361,7 +1342,7 @@ def api_schedule(user, params):
 
 
 def api_stats(user, params):
-    """统计:跨全部历史工单聚合。range=all|7d|30d|month;person=<open_id> 时返回该人明细。"""
+    """按订单统计业务量，按 work_sessions 统计每名工作人员的实际工时。"""
     rng = params.get("range") or "30d"
     person = (params.get("person") or "").strip()
     grp = (params.get("group") or "").strip()
@@ -1392,15 +1373,17 @@ def api_stats(user, params):
                 conn.close()
                 return 403, "组长只能查看本组人员明细"
         prow = conn.execute("SELECT name,COALESCE(alias,'') alias FROM users WHERE open_id=?", (person,)).fetchone()
-        where = "assignee_id=? AND date>=? AND date<=?"
+        where = "s.worker_id=? AND o.date>=? AND o.date<=?"
         args = [person, frm, to]
         if user["role"] == "staff":
-            where += " AND grp=?"
+            where += " AND o.grp=?"
             args.append(user.get("grp") or "")
         rows = [dict(r) for r in conn.execute(
-            """SELECT id,date,team,room,task_type,minutes,arrive,status,note,media,media_kind,media2,media2_kind,
-                      started_at,done_at
-               FROM orders WHERE """ + where + " ORDER BY date DESC,arrive DESC", args)]
+            """SELECT o.id,o.date,o.team,o.room,o.task_type,o.minutes,o.arrive,o.status,o.note,
+                      o.media,o.media_kind,o.media2,o.media2_kind,s.started_at,s.ended_at done_at,
+                      s.end_reason
+               FROM work_sessions s JOIN orders o ON o.id=s.order_id WHERE """ + where +
+            " ORDER BY o.date DESC,s.started_at DESC", args)]
         conn.close()
         for r in rows:
             r["used"] = used_minutes(r.get("started_at"), r.get("done_at"))
@@ -1412,53 +1395,75 @@ def api_stats(user, params):
         where += " AND team_id=?"
         args.append(business.bound_team_id(user) or -1)
     elif user["role"] == "staff" and not user.get("lead"):
-        where += " AND assignee_id=?"
-        args.append(user["open_id"])
+        where += " AND (assignee_id=? OR id IN (SELECT order_id FROM work_sessions WHERE worker_id=?))"
+        args.extend((user["open_id"], user["open_id"]))
     elif grp:
         where += " AND grp=?"
         args.append(grp)
     rows = [dict(r) for r in conn.execute(
-        """SELECT date,task_type,minutes,status,assignee_id,assignee_name,started_at,done_at
+        """SELECT id,date,task_type,minutes,status,assignee_id,assignee_name,started_at,done_at
            FROM orders WHERE """ + where, args)]
+    order_ids = [row["id"] for row in rows]
+    sessions = []
+    if order_ids:
+        marks = ",".join("?" for _ in order_ids)
+        sessions = [dict(r) for r in conn.execute(
+            f"""SELECT s.order_id,s.worker_id,s.started_at,s.ended_at,s.end_reason,
+                       o.date,o.task_type,o.status
+                FROM work_sessions s JOIN orders o ON o.id=s.order_id
+                WHERE s.order_id IN ({marks}) ORDER BY s.id""", order_ids)]
     conn.close()
     summary = {"orders": len(rows), "pending": 0, "assigned": 0, "in_progress": 0,
-               "completed": 0, "cancelled": 0, "abnormal": 0, "minutes": 0,
+               "completion_review": 0, "completed": 0, "cancelled": 0, "abnormal": 0, "minutes": 0,
                "days": len({r["date"] for r in rows}), "people": 0,
                "usedSum": 0.0, "timed": 0}
     by_person, by_type, by_day, people = {}, {}, {}, set()
+    order_actual = {}
     for r in rows:
         st, mins = r["status"], (r["minutes"] or 0)
         summary["minutes"] += mins
         if st in business.ORDER_STATUS:
             summary[st] += 1
-        used = used_minutes(r.get("started_at"), r.get("done_at"))
-        if used is not None:
-            summary["usedSum"] += used
-            summary["timed"] += 1
         t = by_type.setdefault(r["task_type"],
                                {"task_type": r["task_type"], "orders": 0, "minutes": 0,
                                 "usedSum": 0.0, "timed": 0})
         t["orders"] += 1
         t["minutes"] += mins
-        if used is not None:
-            t["usedSum"] += used
-            t["timed"] += 1
         d = by_day.setdefault(r["date"], {"date": r["date"], "orders": 0, "completed": 0})
         d["orders"] += 1
         if st == "completed":
             d["completed"] += 1
-        aid = r["assignee_id"]
-        if aid:
-            people.add(aid)
-            p = by_person.setdefault(aid, {"open_id": aid, "name": amap.get(aid) or r["assignee_name"] or aid,
-                                           "orders": 0, "completed": 0, "minutes": 0, "types": {}, "lastDate": ""})
-            p["orders"] += 1
-            p["minutes"] += mins
-            if st == "completed":
-                p["completed"] += 1
-            p["types"][r["task_type"]] = p["types"].get(r["task_type"], 0) + 1
-            if r["date"] > p["lastDate"]:
-                p["lastDate"] = r["date"]
+    person_orders = {}
+    person_completed = {}
+    for session in sessions:
+        worker_id = session["worker_id"]
+        people.add(worker_id)
+        p = by_person.setdefault(
+            worker_id,
+            {"open_id": worker_id, "name": amap.get(worker_id) or worker_id,
+             "orders": 0, "completed": 0, "minutes": 0.0, "types": {}, "lastDate": ""},
+        )
+        person_orders.setdefault(worker_id, set()).add(session["order_id"])
+        if session["status"] == "completed":
+            person_completed.setdefault(worker_id, set()).add(session["order_id"])
+        p["types"][session["task_type"]] = p["types"].get(session["task_type"], 0) + 1
+        p["lastDate"] = max(p["lastDate"], session["date"])
+        used = used_minutes(session["started_at"], session["ended_at"])
+        if used is not None:
+            p["minutes"] += used
+            order_actual[session["order_id"]] = order_actual.get(session["order_id"], 0.0) + used
+    for worker_id, p in by_person.items():
+        p["orders"] = len(person_orders.get(worker_id, set()))
+        p["completed"] = len(person_completed.get(worker_id, set()))
+    for order in rows:
+        used = order_actual.get(order["id"])
+        if used is None:
+            continue
+        summary["usedSum"] += used
+        summary["timed"] += 1
+        t = by_type[order["task_type"]]
+        t["usedSum"] += used
+        t["timed"] += 1
     summary["people"] = len(people)
     summary["avgUsed"] = round(summary["usedSum"] / summary["timed"], 1) if summary["timed"] else None
     bp = []
@@ -1473,7 +1478,7 @@ def api_stats(user, params):
     bp.sort(key=lambda x: x["orders"], reverse=True)
     bt = []
     for t in by_type.values():
-        bt.append({"task_type": t["task_type"], "orders": t["orders"], "minutes": t["minutes"],
+        bt.append({"task_type": t["task_type"], "orders": t["orders"], "minutes": t["usedSum"],
                    "timed": t["timed"],
                    "avgUsed": round(t["usedSum"] / t["timed"], 1) if t["timed"] else None,
                    "plannedAvg": round(t["minutes"] / t["orders"]) if t["orders"] else None})
@@ -1504,7 +1509,7 @@ def do_tech_status(user, body):
             conn.close()
             return 403, "只能改自己的状态(其他人由本组组长或管理员改)"
     active = conn.execute(
-        "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status='working'", (target,)
+        "SELECT COUNT(*) c FROM work_sessions WHERE worker_id=? AND ended_at=''", (target,)
     ).fetchone()["c"]
     if active and status in ("free", "rest", "off"):
         conn.close()
@@ -2002,10 +2007,12 @@ SAVE_WHITELIST = {
     "teams": {"name", "room", "rehearsal", "onair"},
     "sla": {"task_type", "minutes", "buffer", "note", "grp"},
     "shifts": {"name", "start", "end", "sort"},
-    "users": {"role", "grp", "lead", "shift", "status", "work_hours", "intern", "leave_until", "alias", "approved", "team_id"},
+    "users": {"role", "grp", "lead", "shift", "status", "work_hours", "intern",
+              "absence_type", "absence_start", "absence_end", "alias",
+              "approved", "blocked", "read_only", "team_id"},
     "groups": {"name", "color", "sort", "auto"},
 }
-LEAD_USER_FIELDS = {"shift", "status", "intern", "leave_until"}  # 组长只能改本组成员这几项
+LEAD_USER_FIELDS = {"shift", "status", "intern", "absence_type", "absence_start", "absence_end"}
 
 
 def do_save(user, body):
@@ -2013,7 +2020,7 @@ def do_save(user, body):
     rec = body.get("record") or {}
     is_admin = user["role"] == "admin"
     is_lead = bool(user.get("lead"))
-    # 管理员改一切;组长只能改本组人员的班次/状态/实习/请假
+    # 管理员改一切;组长只能改本组人员的班次/状态/实习/离岗安排
     if not is_admin and not (is_lead and entity == "users"):
         return 403, "仅管理员或组长可编辑"
     if entity not in SAVE_WHITELIST:
@@ -2038,9 +2045,9 @@ def do_save(user, body):
         if not target_user:
             conn.close()
             return 400, "用户不存在"
-        if oid == user["open_id"] and ({"role", "lead", "intern", "shift", "status", "grp"} & set(fields.keys())):
+        if oid == user["open_id"] and ({"role", "lead", "intern", "shift", "status", "grp", "approved", "blocked", "read_only"} & set(fields.keys())):
             conn.close()
-            return 403, "不能修改自己的身份 / 组别 / 班次，请让管理员或其他组长操作"
+            return 403, "不能修改自己的身份、准入、组别或班次，请让其他管理员操作"
         if fields.get("role") and fields["role"] not in ROLES:
             conn.close()
             return 400, "非法角色"
@@ -2056,21 +2063,57 @@ def do_save(user, body):
             fields["alias"] = str(fields["alias"] or "").strip()[:20]  # 显示名,空=用飞书名
         if "approved" in fields:
             fields["approved"] = 1 if str(fields["approved"]) in ("1", "true", "on", "yes") else 0
+        if "blocked" in fields:
+            fields["blocked"] = 1 if str(fields["blocked"]) in ("1", "true", "on", "yes") else 0
+        if "read_only" in fields:
+            fields["read_only"] = 1 if str(fields["read_only"]) in ("1", "true", "on", "yes") else 0
+        if fields.get("blocked") == 1:
+            fields["approved"] = 0
+        elif fields.get("approved") == 1:
+            fields["blocked"] = 0
+        if fields.get("role") and fields["role"] != "admin":
+            fields["read_only"] = 0
+        if fields.get("read_only") == 1 and fields.get("role", target_user["role"]) != "admin":
+            conn.close()
+            return 400, "管理层只读必须使用管理端身份"
         if "team_id" in fields:
             team_id = record_id(fields["team_id"])
             if team_id and not conn.execute("SELECT 1 FROM teams WHERE id=?", (team_id,)).fetchone():
                 conn.close()
                 return 400, "绑定团队不存在"
             fields["team_id"] = team_id
-        if "leave_until" in fields:
-            lv = str(fields["leave_until"] or "").strip()
-            if lv and not valid_future_date(lv) and lv != today():
+        absence_fields = {"absence_type", "absence_start", "absence_end"}
+        if absence_fields & set(fields):
+            absence_type = str(fields.get("absence_type", target_user["absence_type"]) or "").strip()
+            absence_start = str(fields.get("absence_start", target_user["absence_start"]) or "").strip()
+            absence_end = str(fields.get("absence_end", target_user["absence_end"]) or "").strip()
+            if not absence_type and (absence_start or absence_end):
+                conn.close()
+                return 400, "请选择离岗类型"
+            if not absence_type:
+                absence_start = ""
+                absence_end = ""
+            elif absence_type not in business.ABSENCE_TYPES:
+                conn.close()
+                return 400, "离岗类型无效"
+            else:
                 try:
-                    datetime.strptime(lv, "%Y-%m-%d")
+                    start_date = datetime.strptime(absence_start, "%Y-%m-%d").date()
+                    end_date = datetime.strptime(absence_end, "%Y-%m-%d").date()
                 except ValueError:
                     conn.close()
-                    return 400, "请假日期格式应为 YYYY-MM-DD"
-            fields["leave_until"] = lv
+                    return 400, "离岗开始和结束日期必须完整"
+                if start_date > end_date:
+                    conn.close()
+                    return 400, "离岗结束日期不能早于开始日期"
+                if end_date < datetime.strptime(today(), "%Y-%m-%d").date():
+                    conn.close()
+                    return 400, "不能新增已经结束的离岗记录"
+            fields.update({
+                "absence_type": absence_type,
+                "absence_start": absence_start,
+                "absence_end": absence_end,
+            })
         if fields.get("shift"):
             valid_shifts = {r["name"] for r in conn.execute("SELECT name FROM shifts")}
             if fields["shift"] not in valid_shifts:
@@ -2080,15 +2123,15 @@ def do_save(user, body):
             conn.close()
             return 400, "非法状态"
         active = conn.execute(
-            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status='in_progress'", (oid,)
+            "SELECT COUNT(*) c FROM work_sessions WHERE worker_id=? AND ended_at=''", (oid,)
         ).fetchone()["c"]
         assigned_or_active = conn.execute(
-            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress')", (oid,)
+            "SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress','completion_review')", (oid,)
         ).fetchone()["c"]
         current_or_imminent = conn.execute(
             """SELECT COUNT(*) c FROM orders
-               WHERE assignee_id=? AND status IN ('assigned','in_progress')
-               AND (status='in_progress' OR scheduled_start<=?) AND scheduled_end>?""",
+               WHERE assignee_id=? AND status IN ('assigned','in_progress','completion_review')
+               AND (status IN ('in_progress','completion_review') OR scheduled_start<=?) AND scheduled_end>?""",
             (
                 oid,
                 business.format_dt(datetime.now() + timedelta(minutes=15)),
@@ -2104,20 +2147,22 @@ def do_save(user, body):
             or ("shift" in fields and fields["shift"] != (target_user["shift"] or ""))
             or fields.get("intern") == 1
             or fields.get("approved") == 0
+            or fields.get("blocked") == 1
         )
         if assigned_or_active and invalidates_assignment:
             conn.close()
             return 409, f"该人员还有 {assigned_or_active} 张待执行或进行中工单，请先改派或完成"
-        leave_until = fields.get("leave_until")
-        if leave_until:
-            leave_conflicts = conn.execute(
-                """SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress')
+        absence_type = fields.get("absence_type")
+        if absence_type:
+            absence_conflicts = conn.execute(
+                """SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND status IN ('assigned','in_progress','completion_review')
                    AND date>=? AND date<=?""",
-                (oid, today(), leave_until),
+                (oid, fields["absence_start"], fields["absence_end"]),
             ).fetchone()["c"]
-            if leave_conflicts:
+            if absence_conflicts:
                 conn.close()
-                return 409, f"请假区间内还有 {leave_conflicts} 张工单，请先改派"
+                label = business.ABSENCE_LABELS[absence_type]
+                return 409, f"{label}区间内还有 {absence_conflicts} 张工单，请先改派"
         # 防呆:唯一管理员不能把自己降级
         if fields.get("role") and fields["role"] != "admin" and oid == user["open_id"]:
             n_admin = conn.execute("SELECT COUNT(*) c FROM users WHERE role='admin'").fetchone()["c"]
@@ -2136,13 +2181,12 @@ def do_save(user, body):
             fields["team_id"] = None
         sets = ",".join(f"{k}=?" for k in fields)
         conn.execute(f"UPDATE users SET {sets} WHERE open_id=?", (*fields.values(), oid))
-        if fields.get("role") == "team" or ("grp" in fields and fields["grp"] != (target_user["grp"] or "")):
-            conn.execute("DELETE FROM worker_skills WHERE open_id=?", (oid,))
+        if fields.get("blocked") == 1 or fields.get("approved") == 0:
+            conn.execute("DELETE FROM sessions WHERE open_id=?", (oid,))
         target_desc = target_user["name"]
     else:
         rid = record_id(rec.get("id"))
         grp_old_name = None
-        sla_old = None
         shift_old_name = None
         if entity == "teams":
             if "name" in fields:
@@ -2174,7 +2218,6 @@ def do_save(user, body):
                 conn.close()
                 return 400, "工时和缓冲必须是整数"
             current = conn.execute("SELECT * FROM sla WHERE id=?", (rid,)).fetchone() if rid else None
-            sla_old = current
             minutes = fields.get("minutes", current["minutes"] if current else None)
             buffer = fields.get("buffer", current["buffer"] if current else None)
             if minutes is None or minutes <= 0:
@@ -2189,7 +2232,7 @@ def do_save(user, body):
                 if (next_grp, next_task_type) != (current["grp"], current["task_type"]):
                     active_rules = conn.execute(
                         """SELECT COUNT(*) count FROM orders WHERE grp=? AND task_type=?
-                           AND status IN ('pending','assigned','in_progress')""",
+                           AND status IN ('pending','assigned','in_progress','completion_review')""",
                         (current["grp"], current["task_type"]),
                     ).fetchone()["count"]
                     if active_rules:
@@ -2215,7 +2258,7 @@ def do_save(user, body):
                 next_end = fields.get("end", current["end"])
                 active_orders = conn.execute(
                     """SELECT o.* FROM orders o JOIN users u ON u.open_id=o.assignee_id
-                       WHERE u.shift=? AND o.status IN ('assigned','in_progress')""",
+                       WHERE u.shift=? AND o.status IN ('assigned','in_progress','completion_review')""",
                     (current["name"],),
                 ).fetchall()
                 for active_order in active_orders:
@@ -2293,17 +2336,6 @@ def do_save(user, body):
             conn.execute("UPDATE users SET grp=? WHERE grp=?", (newn, grp_old_name))
             conn.execute("UPDATE orders SET grp=? WHERE grp=?", (newn, grp_old_name))
             conn.execute("UPDATE sla SET grp=? WHERE grp=?", (newn, grp_old_name))
-            conn.execute("UPDATE worker_skills SET grp=? WHERE grp=?", (newn, grp_old_name))
-        if entity == "sla" and sla_old:
-            conn.execute(
-                "UPDATE worker_skills SET grp=?,task_type=? WHERE grp=? AND task_type=?",
-                (
-                    fields.get("grp", sla_old["grp"]),
-                    fields.get("task_type", sla_old["task_type"]),
-                    sla_old["grp"],
-                    sla_old["task_type"],
-                ),
-            )
         if entity == "shifts" and shift_old_name and fields.get("name") and fields["name"] != shift_old_name:
             conn.execute("UPDATE users SET shift=? WHERE shift=?", (fields["name"], shift_old_name))
     insert_audit(conn, user, f"编辑{entity}", f"{target_desc} {json.dumps(fields, ensure_ascii=False)[:200]}")
@@ -2334,7 +2366,7 @@ def do_remove(user, body):
         if grow:
             gname = grow["name"]
             n_u = conn.execute("SELECT COUNT(*) c FROM users WHERE grp=?", (gname,)).fetchone()["c"]
-            n_o = conn.execute("SELECT COUNT(*) c FROM orders WHERE grp=? AND status IN ('pending','assigned','in_progress')",
+            n_o = conn.execute("SELECT COUNT(*) c FROM orders WHERE grp=? AND status IN ('pending','assigned','in_progress','completion_review')",
                                (gname,)).fetchone()["c"]
             n_s = conn.execute("SELECT COUNT(*) c FROM sla WHERE grp=?", (gname,)).fetchone()["c"]
             if n_u or n_o or n_s:
@@ -2353,7 +2385,7 @@ def do_remove(user, body):
     if entity == "teams":
         bound = conn.execute("SELECT COUNT(*) count FROM users WHERE team_id=?", (rid,)).fetchone()["count"]
         active = conn.execute(
-            "SELECT COUNT(*) count FROM orders WHERE team_id=? AND status IN ('pending','assigned','in_progress')",
+            "SELECT COUNT(*) count FROM orders WHERE team_id=? AND status IN ('pending','assigned','in_progress','completion_review')",
             (rid,),
         ).fetchone()["count"]
         if bound or active:
@@ -2364,13 +2396,12 @@ def do_remove(user, body):
         if rule:
             active = conn.execute(
                 """SELECT COUNT(*) count FROM orders WHERE grp=? AND task_type=?
-                   AND status IN ('pending','assigned','in_progress')""",
+                   AND status IN ('pending','assigned','in_progress','completion_review')""",
                 (rule["grp"], rule["task_type"]),
             ).fetchone()["count"]
             if active:
                 conn.close()
                 return 409, f"该任务类型仍有 {active} 张未结束订单，不能删除"
-            conn.execute("DELETE FROM worker_skills WHERE grp=? AND task_type=?", (rule["grp"], rule["task_type"]))
     if conn.execute(f"DELETE FROM {entity} WHERE id=?", (rid,)).rowcount != 1:
         conn.close()
         return 400, "记录不存在"
@@ -2382,45 +2413,11 @@ def do_remove(user, body):
     return 200, None
 
 
-def do_skills(user, body):
-    target_id = (body.get("user_id") or "").strip()
-    task_types = body.get("task_types") or []
-    if not target_id or not isinstance(task_types, list):
-        return 400, "人员或能力列表无效"
-    task_types = list(dict.fromkeys(str(item or "").strip() for item in task_types if str(item or "").strip()))
-    conn = db()
-    conn.execute("BEGIN IMMEDIATE")
-    target = conn.execute("SELECT * FROM users WHERE open_id=?", (target_id,)).fetchone()
-    if not target or target["role"] == "team" or not target["grp"]:
-        conn.close()
-        return 404, "工作人员不存在"
-    if not business.is_manager(user, target["grp"]):
-        conn.close()
-        return 403, "只有管理员或本组组长可以配置能力"
-    valid = {row["task_type"] for row in conn.execute("SELECT task_type FROM sla WHERE grp=?", (target["grp"],))}
-    invalid = [item for item in task_types if item not in valid]
-    if invalid:
-        conn.close()
-        return 400, f"能力不属于该组：{invalid[0]}"
-    conn.execute("DELETE FROM worker_skills WHERE open_id=? AND grp=?", (target_id, target["grp"]))
-    conn.executemany(
-        "INSERT INTO worker_skills(open_id,grp,task_type,created_at) VALUES(?,?,?,?)",
-        [(target_id, target["grp"], item, now_iso()) for item in task_types],
-    )
-    conn.execute(
-        "INSERT INTO audit(ts,open_id,name,action,detail) VALUES(?,?,?,?,?)",
-        (now_iso(), user["open_id"], user["name"], "配置人员能力", f"{dn(target)} · {', '.join(task_types) or '无'}"),
-    )
-    conn.commit()
-    conn.close()
-    return 200, None
-
-
 SETTING_WHITELIST = {"reminder_on", "reminder_minutes", "urgent_on",
                      "book_team_cap", "book_grace_min",
                      "book_team_day_min", "rule_dev_note", "rule_biange_media", "rule_done_note",
                      "book_horizon_days", "start_early_min",
-                     "nav_team", "nav_staff", "gate_mode", "allow_dept_ids", "overrun_remind_min", "overrun_close_min"}
+                     "nav_team", "nav_staff", "gate_mode", "allow_dept_ids", "overrun_remind_min"}
 
 
 def do_set_setting(user, body):
@@ -2458,13 +2455,13 @@ def do_set_setting(user, body):
             v = str(max(0, min(1440, int(v or 240))))  # 0=不限
         except ValueError:
             return 400, "分钟需为数字"
-    elif k in ("overrun_remind_min", "overrun_close_min"):
+    elif k == "overrun_remind_min":
         try:
             v = str(max(0, min(1440, int(v or 0))))
         except ValueError:
             return 400, "分钟需为数字"
     elif k == "gate_mode":
-        if v not in ("open", "dept", "manual"):
+        if v not in ("dept", "manual"):
             return 400, "非法准入模式"
     elif k == "allow_dept_ids":
         v = ",".join(x.strip() for x in v.split(",") if x.strip())[:500]
@@ -2504,6 +2501,7 @@ def do_purge(user, body):
         n = conn.execute("SELECT COUNT(*) c FROM orders").fetchone()["c"]
         guids = [r["feishu_task_guid"] for r in conn.execute(
             "SELECT feishu_task_guid FROM orders WHERE COALESCE(feishu_task_guid,'')!=''")]
+        conn.execute("DELETE FROM time_reviews")
         conn.execute("DELETE FROM work_sessions")
         conn.execute("DELETE FROM transfers")
         conn.execute("DELETE FROM order_events")
@@ -2681,12 +2679,13 @@ class Handler(BaseHTTPRequestHandler):
     def _approved(user):
         return bool(
             user
-            and (
-                user.get("role") == "admin"
-                or user.get("approved", 0)
-                or setting("gate_mode", "open") == "open"
-            )
+            and not user.get("blocked", 0)
+            and (user.get("role") == "admin" or user.get("approved", 0))
         )
+
+    @classmethod
+    def _can_write(cls, user):
+        return cls._approved(user) and not user.get("read_only", 0)
 
     def _body(self):
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -2704,7 +2703,9 @@ class Handler(BaseHTTPRequestHandler):
         if not u:
             return self._send(401, {"ok": False, "msg": "未登录"})
         if not self._approved(u):
-            return self._send(403, {"ok": False, "msg": "账号尚未通过管理员审核"})
+            return self._send(403, {"ok": False, "msg": "账号未获授权或已被禁用"})
+        if not self._can_write(u):
+            return self._send(403, {"ok": False, "msg": "管理层只读账号不能上传或修改数据"})
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
         if not (ctype.startswith("audio/") or ctype.startswith("video/")):
             return self._send(400, {"ok": False, "msg": "只支持音频或视频文件"})
@@ -3053,9 +3054,11 @@ class Handler(BaseHTTPRequestHandler):
             u = self._user()
             if not u:
                 return self._send(401, {"ok": False, "msg": "未登录"})
-            # 准入门:待审核账号除了认领管理员,什么都不能做
-            if setting("gate_mode", "open") != "open" and not u.get("approved", 1) and u.get("role") != "admin" and path != "/api/claim-admin":
-                return self._send(403, {"ok": False, "msg": "账号待管理员审核,请联系管理员在「人员」页放行"})
+            # 准入门:待审核或禁用账号不能调用业务接口；管理层只读只能读取 GET 数据。
+            if not self._approved(u) and path != "/api/claim-admin":
+                return self._send(403, {"ok": False, "msg": "账号未获授权或已被禁用，请联系管理员"})
+            if not self._can_write(u):
+                return self._send(403, {"ok": False, "msg": "管理层只读账号只能查看，不能执行修改操作"})
 
             routes = {
                 "/api/claim-admin": do_claim_admin,
@@ -3063,10 +3066,12 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/order": SERVICE.order,
                 "/api/assign": SERVICE.assign,
                 "/api/start": SERVICE.start,
+                "/api/report-start": SERVICE.report_start,
                 "/api/complete": SERVICE.complete,
+                "/api/completion-dispute": SERVICE.dispute_completion,
+                "/api/time-review-resolve": SERVICE.resolve_time_review,
                 "/api/save": do_save,
                 "/api/remove": do_remove,
-                "/api/skills": do_skills,
                 "/api/setting": do_set_setting,
                 "/api/reassign": SERVICE.reassign,
                 "/api/cancel-order": SERVICE.cancel,
