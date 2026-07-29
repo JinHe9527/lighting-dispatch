@@ -53,6 +53,22 @@ DISPATCH_TEST_MODE=0
 
 正式环境必须使用 HTTPS。飞书后台的网页地址和 OAuth 回调必须与 `DISPATCH_BASE_URL` 完全一致。
 
+当前正式域名配置为：
+
+```text
+DISPATCH_BASE_URL=https://wuyoupaiban.cn
+网页应用桌面端主页=https://wuyoupaiban.cn
+网页应用移动端主页=https://wuyoupaiban.cn
+OAuth 重定向 URL=https://wuyoupaiban.cn/auth/callback
+```
+
+Linux 部署前应先为 `wuyoupaiban.cn` 申请证书，证书路径必须为：
+
+```text
+/etc/letsencrypt/live/wuyoupaiban.cn/fullchain.pem
+/etc/letsencrypt/live/wuyoupaiban.cn/privkey.pem
+```
+
 ## 本地测试
 
 ```bash
