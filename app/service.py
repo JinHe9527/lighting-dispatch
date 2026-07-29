@@ -142,10 +142,16 @@ class DispatchService:
 
     def _queue_time_review(self, conn, order, review_id, label):
         managers = conn.execute(
-            "SELECT open_id FROM users WHERE role='admin' OR (lead=1 AND grp=?)",
+            "SELECT open_id FROM users WHERE role='admin' OR (role='staff' AND lead=1 AND grp=?)",
             (order["grp"],),
         ).fetchall()
+        review = conn.execute(
+            "SELECT requested_by,worker_id FROM time_reviews WHERE id=?", (review_id,)
+        ).fetchone()
+        excluded = {review["requested_by"], review["worker_id"]} if review else set()
         for manager in managers:
+            if manager["open_id"] in excluded:
+                continue
             business.queue_notification(
                 conn,
                 manager["open_id"],
@@ -201,7 +207,10 @@ class DispatchService:
             if not known_task:
                 return 400, "任务类型尚未配置，请先由管理员在规则库中添加"
             when = (body.get("when") or "auto").strip()
-            urgent = 1 if str(body.get("urgent") or "") in ("1", "true", "on", "yes") else 0
+            urgent = 1 if (
+                business.is_manager(user, grp)
+                and str(body.get("urgent") or "") in ("1", "true", "on", "yes")
+            ) else 0
             booked = 0
             if when == "now":
                 current = datetime.now()
@@ -303,7 +312,10 @@ class DispatchService:
                 worker = conn.execute("SELECT * FROM users WHERE open_id=?", (requested_assignee,)).fetchone()
                 if not worker:
                     return 400, "指派人员不存在"
-                block = business.assignment_block(conn, worker, order)
+                require_now = start <= datetime.now() + timedelta(minutes=15)
+                block = business.assignment_block(
+                    conn, worker, order, require_available_now=require_now
+                )
                 if block:
                     return 409, block
             elif requested_assignee and not can_choose:
@@ -600,6 +612,8 @@ class DispatchService:
                 return 404, "工单不存在"
             if not business.can_manage_order(user, order):
                 return 403, "只有本组组长或管理员可以处理"
+            if user["open_id"] in (review["requested_by"], review["worker_id"]):
+                return 403, "不能审核自己发起或由自己执行的时间核实"
             stamp = business.now_iso()
             proposed = corrected or business.parse_dt(review["proposed_at"])
 
@@ -612,6 +626,20 @@ class DispatchService:
                     created = business.parse_dt(order["created_at"])
                     if not proposed or proposed > datetime.now() or (created and proposed < created):
                         return 400, "核实后的开始时间无效"
+                    worker = conn.execute(
+                        "SELECT * FROM users WHERE open_id=?", (review["worker_id"],)
+                    ).fetchone()
+                    if not worker:
+                        return 404, "负责人不存在"
+                    block = business.assignment_block(
+                        conn,
+                        worker,
+                        order,
+                        ignore_order_id=order["id"],
+                        require_available_now=True,
+                    )
+                    if block:
+                        return 409, block
                     active = self._worker_has_open_session(conn, review["worker_id"], order["id"])
                     if active:
                         return 409, f"该人员已有进行中的工单 #{active['order_id']}"
@@ -695,6 +723,20 @@ class DispatchService:
                 if order["status"] != "completed":
                     return 409, "工单完成状态已经变化"
                 if decision == "reopen":
+                    worker = conn.execute(
+                        "SELECT * FROM users WHERE open_id=?", (review["worker_id"],)
+                    ).fetchone()
+                    if not worker:
+                        return 404, "负责人不存在"
+                    block = business.assignment_block(
+                        conn,
+                        worker,
+                        order,
+                        ignore_order_id=order["id"],
+                        require_available_now=True,
+                    )
+                    if block:
+                        return 409, block
                     active = self._worker_has_open_session(conn, review["worker_id"], order["id"])
                     if active:
                         return 409, f"负责人已经在执行工单 #{active['order_id']}，不能直接重新打开"
@@ -835,7 +877,15 @@ class DispatchService:
                 worker = conn.execute("SELECT * FROM users WHERE open_id=?", (target_id,)).fetchone()
                 if not worker:
                     return 400, "目标人员不存在"
-                block = business.assignment_block(conn, worker, order, ignore_order_id=order_id)
+                start, _ = business.order_bounds(order)
+                require_now = bool(start and start <= datetime.now() + timedelta(minutes=15))
+                block = business.assignment_block(
+                    conn,
+                    worker,
+                    order,
+                    ignore_order_id=order_id,
+                    require_available_now=require_now,
+                )
                 if block:
                     return 409, block
                 stamp = business.now_iso()
@@ -978,37 +1028,6 @@ class DispatchService:
         finally:
             conn.close()
 
-    def tech_status(self, user, body):
-        if user["role"] == "team":
-            return 403, "团队账号不能修改工作人员状态"
-        target_id = (body.get("user_id") or user["open_id"]).strip()
-        status = (body.get("status") or "").strip()
-        if status not in ("free", "busy", "check", "rest", "off"):
-            return 400, "状态无效"
-        conn = self.db()
-        try:
-            conn.execute("BEGIN IMMEDIATE")
-            target = conn.execute("SELECT * FROM users WHERE open_id=?", (target_id,)).fetchone()
-            if not target or target["role"] == "team":
-                return 404, "工作人员不存在"
-            if target_id != user["open_id"] and not business.is_manager(user, target["grp"]):
-                return 403, "只能修改自己或本组成员状态"
-            active = conn.execute(
-                "SELECT COUNT(*) count FROM work_sessions WHERE worker_id=? AND ended_at=''", (target_id,)
-            ).fetchone()["count"]
-            if active and status != "busy":
-                return 409, "该人员有正在执行的订单，不能切换到其他状态"
-            task = (body.get("task") or "").strip()[:100] if status in ("busy", "check") else ""
-            conn.execute("UPDATE users SET status=?,task=? WHERE open_id=?", (status, task, target_id))
-            conn.execute(
-                "INSERT INTO audit(ts,open_id,name,action,detail) VALUES(?,?,?,?,?)",
-                (business.now_iso(), user["open_id"], user["name"], "修改人员状态", f"{business.display_name(target)} → {status}"),
-            )
-            conn.commit()
-            return 200, None
-        finally:
-            conn.close()
-
     def request_transfer(self, user, body):
         order_id = self._record_id(body.get("order_id"))
         reason_code = (body.get("reason_code") or "").strip()
@@ -1082,8 +1101,13 @@ class DispatchService:
                 f"转包 #{transfer_id} · {reason_code} · {transfer_status}",
             )
             if requires_lead:
-                leads = conn.execute("SELECT open_id FROM users WHERE grp=? AND (lead=1 OR role='admin')", (order["grp"],)).fetchall()
+                leads = conn.execute(
+                    "SELECT open_id FROM users WHERE role='admin' OR (role='staff' AND lead=1 AND grp=?)",
+                    (order["grp"],),
+                ).fetchall()
                 for lead in leads:
+                    if lead["open_id"] in (user["open_id"], target_id):
+                        continue
                     business.queue_notification(
                         conn, lead["open_id"], f"转包待审批：#{order_id} {order['team']} · {reason_code}",
                         f"transfer:{transfer_id}:approval:{lead['open_id']}", urgent=urgent_window,
@@ -1121,6 +1145,8 @@ class DispatchService:
                 return 403, "只有本组组长或管理员可以审批"
             if transfer["status"] != "awaiting_lead":
                 return 409, "该转包申请不在待审批状态"
+            if user["open_id"] in (transfer["requester_id"], transfer["target_id"]):
+                return 403, "转包的发起人和目标接手人不能审批自己的申请"
             stamp = business.now_iso()
             if not approve:
                 conn.execute(

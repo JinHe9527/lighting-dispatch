@@ -259,7 +259,10 @@ class DispatchFlowTests(unittest.TestCase):
         code, message = server.SERVICE.order(self.team, body)
         self.assertEqual((code, message), (403, "普通下单人员不能指定工作人员"))
 
-        self.assertEqual(server.SERVICE.order(self.team, self.order_body(15))[0], 200)
+        team_order = self.order_body(15)
+        team_order["urgent"] = "1"
+        self.assertEqual(server.SERVICE.order(self.team, team_order)[0], 200)
+        self.assertEqual(self.latest_order()["urgent"], 0)
         self.assertEqual(server.SERVICE.order(self.team, self.order_body(16))[0], 200)
         code, message = server.SERVICE.order(self.team, self.order_body(17))
         self.assertEqual(code, 409)
@@ -312,7 +315,186 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 409)
         self.assertIn("提前", message)
 
-    def test_worker_must_be_available_when_starting_assigned_order(self):
+    def test_member_cannot_modify_own_status(self):
+        code, message = server.do_save(
+            self.staff,
+            {"entity": "users", "record": {"open_id": self.staff["open_id"], "status": "rest"}},
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("管理员或组长", message)
+        code, message = server.do_save(
+            self.lead,
+            {"entity": "users", "record": {"open_id": self.lead["open_id"], "status": "rest"}},
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("不能修改自己", message)
+        source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
+        server_source = (Path(server.ROOT) / "server.py").read_text(encoding="utf-8")
+        self.assertNotIn("data-status", source)
+        self.assertNotIn("/api/tech-status", server_source)
+        self.assertIn("状态由组长或管理员维护", source)
+
+    def test_manager_cannot_modify_own_absence_or_approve_own_review(self):
+        day = datetime.now().date().isoformat()
+        code, message = server.do_save(
+            self.lead,
+            {
+                "entity": "users",
+                "record": {
+                    "open_id": self.lead["open_id"],
+                    "absence_type": "leave",
+                    "absence_start": day,
+                    "absence_end": day,
+                },
+            },
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("离岗安排", message)
+
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "now",
+            "assignee": self.lead["open_id"],
+        }
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        self.assertEqual(server.SERVICE.start(self.lead, {"order_id": order["id"]}), (200, None))
+        self.assertEqual(
+            server.SERVICE.complete(
+                self.lead,
+                {"order_id": order["id"], "note": "申请结束", "reason": "现场提前结束"},
+            )[0],
+            200,
+        )
+        review = self.latest_review()
+        code, message = server.SERVICE.resolve_time_review(
+            self.lead,
+            {"review_id": review["id"], "decision": "approve", "note": "本人确认"},
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("不能审核自己", message)
+
+    def test_retro_start_review_rechecks_current_availability(self):
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "now",
+            "assignee": self.staff["open_id"],
+        }
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        self.assertEqual(
+            server.SERVICE.report_start(
+                self.staff,
+                {
+                    "order_id": order["id"],
+                    "started_at": server.business.now_iso(),
+                    "reason": "忘记点开始",
+                },
+            )[0],
+            200,
+        )
+        conn = server.db()
+        conn.execute("UPDATE users SET status='rest' WHERE open_id=?", (self.staff["open_id"],))
+        conn.commit()
+        conn.close()
+        review = self.latest_review()
+        code, message = server.SERVICE.resolve_time_review(
+            self.lead,
+            {"review_id": review["id"], "decision": "approve", "note": "核实补报"},
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("小休", message)
+
+    def test_immediate_assignment_and_reassignment_recheck_current_status(self):
+        conn = server.db()
+        conn.execute("UPDATE users SET status='rest' WHERE open_id=?", (self.staff["open_id"],))
+        conn.commit()
+        conn.close()
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "now",
+            "assignee": self.staff["open_id"],
+        }
+        code, message = server.SERVICE.order(self.admin, body)
+        self.assertEqual(code, 409)
+        self.assertIn("小休", message)
+
+        body.pop("assignee")
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        code, message = server.SERVICE.reassign(
+            self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("小休", message)
+
+    def test_transfer_requires_independent_approval_and_notifies_global_admin(self):
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "now",
+            "assignee": self.lead["open_id"],
+        }
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        self.assertEqual(server.SERVICE.start(self.lead, {"order_id": order["id"]}), (200, None))
+        self.assertEqual(
+            server.SERVICE.request_transfer(
+                self.lead,
+                {
+                    "order_id": order["id"],
+                    "reason_code": "临时生病",
+                    "target_id": self.staff["open_id"],
+                },
+            )[0],
+            200,
+        )
+        conn = server.db()
+        transfer = dict(conn.execute("SELECT * FROM transfers ORDER BY id DESC LIMIT 1").fetchone())
+        notified = conn.execute(
+            "SELECT 1 FROM notification_outbox WHERE dedupe_key=?",
+            (f"transfer:{transfer['id']}:approval:{self.admin['open_id']}",),
+        ).fetchone()
+        conn.close()
+        self.assertIsNotNone(notified)
+        code, message = server.SERVICE.approve_transfer(
+            self.lead, {"transfer_id": transfer["id"]}
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("不能审批自己", message)
+        self.assertEqual(
+            server.SERVICE.approve_transfer(self.admin, {"transfer_id": transfer["id"]}),
+            (200, None),
+        )
+
+    def test_team_lead_flag_never_grants_management_permission(self):
+        conn = server.db()
+        conn.execute(
+            "UPDATE users SET lead=1,grp='灯光组' WHERE open_id=?", (self.team["open_id"],)
+        )
+        conn.commit()
+        conn.close()
+        team_with_bad_data = self.user(self.team["open_id"])
+        self.assertFalse(server.business.is_manager(team_with_bad_data, "灯光组"))
+        self.assertEqual(
+            server.do_save(
+                team_with_bad_data,
+                {
+                    "entity": "users",
+                    "record": {"open_id": self.staff["open_id"], "status": "rest"},
+                },
+            )[0],
+            403,
+        )
+
+    def test_manager_cannot_mark_imminent_assignee_unavailable(self):
         body = {
             "team_id": self.team_row["id"],
             "group": "灯光组",
@@ -327,17 +509,12 @@ class DispatchFlowTests(unittest.TestCase):
             )[0],
             200,
         )
-        self.assertEqual(
-            server.SERVICE.tech_status(self.staff, {"status": "rest", "task": ""}),
-            (200, None),
+        code, message = server.do_save(
+            self.lead,
+            {"entity": "users", "record": {"open_id": self.staff["open_id"], "status": "rest"}},
         )
-        code, message = server.SERVICE.start(self.staff, {"order_id": order["id"]})
         self.assertEqual(code, 409)
-        self.assertIn("小休", message)
-        self.assertEqual(
-            server.SERVICE.tech_status(self.staff, {"status": "free", "task": ""}),
-            (200, None),
-        )
+        self.assertIn("忙碌", message)
         self.assertEqual(server.SERVICE.start(self.staff, {"order_id": order["id"]}), (200, None))
 
     def test_state_machine_and_transfer_handoff(self):
@@ -529,6 +706,20 @@ class DispatchFlowTests(unittest.TestCase):
         )
         dispute = self.latest_review()
         self.assertEqual(dispute["kind"], "team_dispute")
+        conn = server.db()
+        conn.execute("UPDATE users SET status='rest' WHERE open_id=?", (self.staff["open_id"],))
+        conn.commit()
+        conn.close()
+        code, message = server.SERVICE.resolve_time_review(
+            self.admin,
+            {"review_id": dispute["id"], "decision": "reopen", "note": "尝试重新打开"},
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("小休", message)
+        conn = server.db()
+        conn.execute("UPDATE users SET status='free' WHERE open_id=?", (self.staff["open_id"],))
+        conn.commit()
+        conn.close()
         self.assertEqual(
             server.SERVICE.resolve_time_review(
                 self.admin,
@@ -621,6 +812,43 @@ class DispatchFlowTests(unittest.TestCase):
         ).fetchone()
         conn.close()
         self.assertIsNotNone(open_session)
+
+    def test_pending_retro_start_review_is_not_auto_released(self):
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+        body = {
+            "team_id": self.team_row["id"],
+            "group": "灯光组",
+            "task": self.task,
+            "when": "book",
+            "date": tomorrow,
+            "at": "15:00",
+            "assignee": self.staff["open_id"],
+        }
+        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        order = self.latest_order()
+        conn = server.db()
+        created = server.business.format_dt(datetime.now() - timedelta(hours=2))
+        stale = server.business.format_dt(datetime.now() - timedelta(hours=1))
+        conn.execute(
+            "UPDATE orders SET created_at=?,scheduled_start=? WHERE id=?",
+            (created, stale, order["id"]),
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(
+            server.SERVICE.report_start(
+                self.staff,
+                {
+                    "order_id": order["id"],
+                    "started_at": server.business.format_dt(datetime.now() - timedelta(minutes=30)),
+                    "reason": "现场已到岗但忘记点开始",
+                },
+            )[0],
+            200,
+        )
+        server.run_scheduled_jobs()
+        self.assertEqual(self.latest_order()["status"], "assigned")
+        self.assertEqual(self.latest_review()["status"], "pending")
 
     def test_repeated_transfers_require_lead_approval(self):
         for index, hour in enumerate((15, 16, 17)):
@@ -721,7 +949,7 @@ class DispatchFlowTests(unittest.TestCase):
         )
         self.assertEqual(code, 409)
         self.assertIn("忙碌", message)
-        self.assertIn('status:"free"', (Path(server.ROOT) / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("状态由组长或管理员维护", (Path(server.ROOT) / "index.html").read_text(encoding="utf-8"))
 
     def test_active_task_rule_cannot_be_renamed_or_moved(self):
         self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)

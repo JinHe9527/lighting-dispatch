@@ -161,6 +161,16 @@ async function traverseRole(page, profile) {
   }
   await lead.locator('[data-page="crew"]').first().click();
   await lead.getByText("本组人员 · 灯光组", { exact: true }).waitFor();
+  if (!await lead.locator('[data-user="test:lead"][data-field="shift"]').isDisabled()) {
+    throw new Error("组长仍能修改自己的班次");
+  }
+  if (!await lead.locator('[data-leave="test:lead"]').isDisabled()) {
+    throw new Error("组长仍能修改自己的离岗安排");
+  }
+  const staffCrewRow = lead.locator('.ca-row:has([data-user="test:staff"])').first();
+  await staffCrewRow.locator(".crew-state").click();
+  await lead.getByText("人员状态 · 测试师傅", { exact: true }).waitFor();
+  await lead.locator('[data-close]').last().click();
 
   const staffContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const staff = await staffContext.newPage();
@@ -176,6 +186,24 @@ async function traverseRole(page, profile) {
   if (!staffNavText.includes("我的工作") || staffNavText.includes("人员") || staffNavText.includes("配置") || staffNavText.includes("审计")) {
     throw new Error(`工作人员端导航权限异常：${staffNavText}`);
   }
+  await staff.locator('[data-page="work"]').first().click();
+  await staff.getByText("状态由组长或管理员维护", { exact: true }).waitFor();
+  if (await staff.locator("[data-status]").count()) throw new Error("工作人员端仍存在自改状态控件");
+  const statusResponse = await staffContext.request.post(`${baseURL}/api/save`, {
+    data: {
+      entity: "users",
+      record: { open_id: "test:staff", status: "rest" },
+    },
+  });
+  const statusWrite = { status: statusResponse.status(), body: await statusResponse.json() };
+  if (statusWrite.status !== 403 || !String(statusWrite.body.msg || "").includes("管理员或组长")) {
+    throw new Error(`工作人员自改状态未被服务端拦截：${JSON.stringify(statusWrite)}`);
+  }
+  const removedStatusResponse = await staffContext.request.post(`${baseURL}/api/tech-status`, {
+    data: { status: "rest" },
+  });
+  const removedStatusRoute = removedStatusResponse.status();
+  if (removedStatusRoute !== 404) throw new Error(`旧状态接口仍可访问：${removedStatusRoute}`);
 
   const teamContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const team = await teamContext.newPage();

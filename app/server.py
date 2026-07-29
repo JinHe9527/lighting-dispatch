@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0724b"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0729a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -962,7 +962,11 @@ def run_scheduled_jobs():
         if grace:
             stale = conn.execute(
                 """SELECT * FROM orders WHERE booked=1 AND status IN ('pending','assigned')
-                   AND scheduled_start!='' AND scheduled_start<?""",
+                   AND scheduled_start!='' AND scheduled_start<?
+                   AND NOT EXISTS (
+                     SELECT 1 FROM time_reviews
+                     WHERE time_reviews.order_id=orders.id AND time_reviews.status='pending'
+                   )""",
                 (business.format_dt(now - timedelta(minutes=grace)),),
             ).fetchall()
             for order in stale:
@@ -1041,9 +1045,12 @@ def run_scheduled_jobs():
                 f"transfer:{transfer['id']}:expired:requester", urgent=True,
             )
             leads = conn.execute(
-                "SELECT open_id FROM users WHERE grp=? AND (lead=1 OR role='admin')", (transfer["grp"],)
+                "SELECT open_id FROM users WHERE role='admin' OR (role='staff' AND lead=1 AND grp=?)",
+                (transfer["grp"],),
             ).fetchall()
             for lead in leads:
+                if lead["open_id"] in (transfer["requester_id"], transfer["target_id"]):
+                    continue
                 business.queue_notification(
                     conn, lead["open_id"],
                     f"转包超时需人工处理：#{transfer['order_id']} {transfer['team']} · {transfer['task_type']}",
@@ -1486,39 +1493,6 @@ def api_stats(user, params):
     return 200, {"range": rng, "from": frm, "to": to, "summary": summary, "byPerson": bp,
                  "byType": bt,
                  "byDay": sorted(by_day.values(), key=lambda x: x["date"])}
-
-
-def do_tech_status(user, body):
-    if user["role"] == "team":
-        return 403, "团队账号不能报状态"
-    target = body.get("user_id") or user["open_id"]
-    status = body.get("status", "")
-    if status not in TECH_STATUS:
-        return 400, "非法状态"
-    task = body.get("task", "") if status in ("busy", "check") else ""
-    conn = db()
-    target_user = conn.execute(
-        "SELECT name,role,grp FROM users WHERE open_id=?", (target,)
-    ).fetchone()
-    if not target_user or not (target_user["grp"] or "") or target_user["role"] == "team":
-        conn.close()
-        return 400, "目标不是可派工成员"
-    if target != user["open_id"]:
-        allowed = user["role"] == "admin" or (user.get("lead") and user.get("grp") == target_user["grp"])
-        if not allowed:
-            conn.close()
-            return 403, "只能改自己的状态(其他人由本组组长或管理员改)"
-    active = conn.execute(
-        "SELECT COUNT(*) c FROM work_sessions WHERE worker_id=? AND ended_at=''", (target,)
-    ).fetchone()["c"]
-    if active and status in ("free", "rest", "off"):
-        conn.close()
-        return 409, "该人员还有进行中工单,完成工单后才能切换到此状态"
-    conn.execute("UPDATE users SET status=?,task=? WHERE open_id=?", (status, task, target))
-    conn.commit()
-    conn.close()
-    audit_log(user, "改状态", f"{target_user['name']} → {status} {task}")
-    return 200, None
 
 
 def do_order(user, body):
@@ -2019,7 +1993,7 @@ def do_save(user, body):
     entity = body.get("entity")
     rec = body.get("record") or {}
     is_admin = user["role"] == "admin"
-    is_lead = bool(user.get("lead"))
+    is_lead = business.is_manager(user) and not is_admin
     # 管理员改一切;组长只能改本组人员的班次/状态/实习/离岗安排
     if not is_admin and not (is_lead and entity == "users"):
         return 403, "仅管理员或组长可编辑"
@@ -2045,9 +2019,13 @@ def do_save(user, body):
         if not target_user:
             conn.close()
             return 400, "用户不存在"
-        if oid == user["open_id"] and ({"role", "lead", "intern", "shift", "status", "grp", "approved", "blocked", "read_only"} & set(fields.keys())):
+        self_managed_fields = {
+            "role", "lead", "intern", "shift", "status", "grp", "approved", "blocked",
+            "read_only", "absence_type", "absence_start", "absence_end",
+        }
+        if oid == user["open_id"] and (self_managed_fields & set(fields.keys())):
             conn.close()
-            return 403, "不能修改自己的身份、准入、组别或班次，请让其他管理员操作"
+            return 403, "不能修改自己的身份、准入、排班、状态或离岗安排，请让其他管理员操作"
         if fields.get("role") and fields["role"] not in ROLES:
             conn.close()
             return 400, "非法角色"
@@ -3062,7 +3040,6 @@ class Handler(BaseHTTPRequestHandler):
 
             routes = {
                 "/api/claim-admin": do_claim_admin,
-                "/api/tech-status": SERVICE.tech_status,
                 "/api/order": SERVICE.order,
                 "/api/assign": SERVICE.assign,
                 "/api/start": SERVICE.start,

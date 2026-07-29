@@ -310,7 +310,11 @@ def shift_bounds(order_date, start_text, end_text):
 def is_manager(user, grp=None):
     if user["role"] == "admin":
         return True
-    return bool(user.get("lead")) and (grp is None or (user.get("grp") or "") == grp)
+    return (
+        user["role"] == "staff"
+        and bool(user.get("lead"))
+        and (grp is None or (user.get("grp") or "") == grp)
+    )
 
 
 def bound_team_id(user):
