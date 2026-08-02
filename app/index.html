@@ -795,8 +795,8 @@ button.day-person-tile:hover{background:var(--fill)}
 .mobile-pending>strong{display:flex;align-items:center;gap:5px;color:var(--orange-text);font-size:11px;white-space:nowrap;flex:none}
 .mobile-pending>strong .icon{width:14px;height:14px}
 .mobile-pending>button{min-height:36px;padding:5px 8px;border:1px solid color-mix(in srgb,var(--orange) 30%,var(--line));background:var(--surface);color:var(--text);font-size:10px;white-space:nowrap;flex:none}
-.mobile-timeline{--name-col:70px;min-width:0;background:var(--surface)}
-.mobile-timeline-axis{height:32px;display:grid;grid-template-columns:var(--name-col) minmax(0,1fr);align-items:end;border-bottom:1px solid var(--line)}
+.mobile-timeline{--name-col:70px;--axis-height:32px;position:relative;min-width:0;background:var(--surface)}
+.mobile-timeline-axis{height:var(--axis-height);display:grid;grid-template-columns:var(--name-col) minmax(0,1fr);align-items:end;border-bottom:1px solid var(--line)}
 .mobile-timeline-axis>span{padding:0 6px 6px;color:var(--muted);font-size:10px;font-weight:650}
 .mobile-timeline-scale{position:relative;height:100%;min-width:0;margin-right:8px}
 .mobile-timeline-scale span{position:absolute;bottom:6px;color:var(--dim);font:9px var(--mono);transform:translateX(-50%)}
@@ -818,7 +818,8 @@ button.mobile-timeline-track:hover{background-color:var(--fill-2)}
 .mobile-timeline-job span{display:block;padding:5px 4px 0;color:#fff;font-size:9px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mobile-timeline-job small{display:block;padding:2px 4px;color:rgba(255,255,255,.82);font:8px var(--mono);white-space:nowrap}
 .mobile-timeline-job.done{opacity:.48;filter:saturate(.45)}
-.mobile-timeline-now{position:absolute;z-index:3;top:0;bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent);pointer-events:none}
+.mobile-timeline-now-layer{position:absolute;z-index:4;top:var(--axis-height);right:8px;bottom:0;left:var(--name-col);pointer-events:none}
+.mobile-timeline-now{position:absolute;top:0;bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
 .schedule-desktop .day-status-board{margin-bottom:10px}
 .schedule-modal{max-width:620px}
 .schedule-form{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
@@ -1031,11 +1032,14 @@ button.dp:hover{border-color:var(--line)}
   .app-shell:has(.ws-dash) .topbar{position:absolute;inset:0 0 auto;height:0;padding:0;border:0;overflow:visible}
   .app-shell:has(.ws-dash) .topbar .page-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .app-shell:has(.ws-dash) .topbar .tb-tabs{display:none}
-  .app-shell:has(.ws-dash) .topbar .top-actions{position:absolute;top:max(6px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:30;display:flex;gap:4px}
+  .app-shell:has(.ws-dash) .topbar .top-actions{position:absolute;top:max(10px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:30;display:flex;gap:4px}
   .app-shell:has(.ws-dash) .topbar .top-actions>*{display:none}
   .app-shell:has(.ws-dash) .topbar #alertBtn,.app-shell:has(.ws-dash) .topbar #refresh,.app-shell:has(.ws-dash) .topbar #mobileAccount{display:grid}
-  .ws-dash{height:100dvh;padding:calc(max(10px,env(safe-area-inset-top)) + 48px) max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
-  .ws-dash .gtabs{margin-bottom:10px}
+  .ws-dash{height:100dvh;padding:max(10px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+  .ws-dash>.banner{display:none}
+  .ws-dash .gtabs{width:calc(100% - 140px);max-width:calc(100% - 140px);margin-bottom:10px}
+  .ws-dash .gtabs .filter{min-width:0;flex:1 1 0;gap:3px;padding:0 2px;font-size:10px}
+  .ws-dash .gtabs .gdot{width:6px;height:6px}
   .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
   .dash::-webkit-scrollbar{display:none}
   .dash-lb{width:auto;padding-bottom:0}
@@ -1052,8 +1056,7 @@ button.dp:hover{border-color:var(--line)}
   .three-day-nav small{font-size:9px}
   .mobile-pending{padding:6px 12px}
   .mobile-pending>button{min-height:44px;font-size:11px}
-  .mobile-timeline{--name-col:72px}
-  .mobile-timeline-axis{height:30px}
+  .mobile-timeline{--name-col:72px;--axis-height:30px}
   .mobile-timeline-row{height:58px}
   .mobile-timeline-who strong{font-size:14px}
   .mobile-timeline-who span{font-size:10px}
@@ -1234,7 +1237,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802m";
+const APP_VERSION="v0802n";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -1620,7 +1623,7 @@ function groupChip(name){if(!name)return"";return `<span class="gchip" style="--
 function ordersInGroup(list,g){return g?list.filter(o=>(o.grp||"")===g):list}
 /* 统一的分组芯片:所有页面的组切换都长一个样 */
 function grpChip(attr,val,label,active,color,extra=""){return `<button type="button" class="filter ${active?"active":""}" ${attr}="${esc(val)}"${color?` style="--gc:${color}"`:""}>${color?`<span class="gdot"></span>`:""}${esc(label)}${extra}</button>`}
-function groupTabsHtml(){const gs=myGroups();if(gs.length<=1)return"";const cur=gs.includes(boardGrp)?boardGrp:gs[0];return `<div class="filters gtabs">${gs.map(n=>grpChip("data-boardgrp",n,n,cur===n,groupColor(n))).join("")}</div>`}
+function groupTabsHtml(){const gs=myGroups();if(!gs.length)return"";const cur=gs.includes(boardGrp)?boardGrp:gs[0];return `<div class="filters gtabs">${gs.map(n=>grpChip("data-boardgrp",n,n,cur===n,groupColor(n))).join("")}</div>`}
 function reqGroupTabs(){const groups=requestGroups();if(reqGroup===null||!groups.includes(reqGroup))reqGroup=defaultGroup();return `<div class="filters">${groups.map(n=>grpChip("data-reqgroup",n,n,n===reqGroup,groupColor(n))).join("")}</div>`}
 function statsGrpTabs(){if(!((me.role==="admin"||me.role==="team")&&curGroups().length>1))return "";return `<div class="filters">${grpChip("data-statsgrp","","全部组",statsGroup==="","var(--muted)")}${curGroups().map(g=>grpChip("data-statsgrp",g.name,g.name,statsGroup===g.name,g.color)).join("")}</div>`}
 function cfgSecTabs(withVer){const secs=[["团队","直播团队"],["任务","任务分类与工时"],["班次","班次时间"],["分组","分组管理"],["规则","规则库"],["飞书","飞书同步"],["页面","页面可见性"],["维护","数据维护"]];return `<div class="filters">${secs.map(([s,full])=>`<button class="filter ${cfgSec===full?"active":""}" data-cfgsec="${esc(full)}">${s}</button>`).join("")}${withVer?`<span class="dim" style="margin-left:10px;font-size:11px;align-self:center">${APP_VERSION}</span>`:""}</div>`}
@@ -2312,7 +2315,7 @@ function mobileTimelineAxis(range){
   if(ticks[ticks.length-1]!==range.last)ticks.push(range.last);
   return`<div class="mobile-timeline-axis"><span>人员</span><div class="mobile-timeline-scale">${ticks.map(minute=>`<span style="left:${mobileTimelinePercent(minute,range).toFixed(3)}%">${mobileTimelineLabel(minute)}</span>`).join("")}</div></div>`
 }
-function mobileTimelineRow(item,dateStr,range,now){
+function mobileTimelineRow(item,dateStr,range){
   const jobs=[...item.jobs].sort((a,b)=>a.start-b.start||a.order.id-b.order.id);
   const canManage=Boolean(me.role==="admin"||me.lead);
   const canPlan=canManage&&dateStr>=todayStr()&&item.assignment&&!item.assignment.is_off&&!item.absence&&item.start!=null&&item.end!=null;
@@ -2324,18 +2327,18 @@ function mobileTimelineRow(item,dateStr,range,now){
     if(job.end<=range.first||job.start>=range.last)return"";
     return`<span class="mobile-timeline-job ${order.status==="completed"?"done":""}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span>${esc(timelineRoomLabel(order))}</span><small>${esc(order.arrive||"--:--")}–${scheduleClock(job.end)}</small></span>`
   }).join("");
-  const nowLine=dateStr===todayStr()&&now!=null&&range.first<=now&&now<=range.last?`<span class="mobile-timeline-now" style="--left:${mobileTimelinePercent(now,range).toFixed(3)}%"></span>`:"";
   const tag=canInteract?"button":"div",type=canInteract?' type="button"':"";
   const data=canInteract?` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`:"";
   const firstJob=jobs[0]?.order;
   const status=jobs.length?timelineRoomLabel(firstJob):item.kind==="free"?"可派":item.label;
-  return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}${nowLine}</${tag}></div>`
+  return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}</${tag}></div>`
 }
 function mobileDaySection(d,dateStr,index){
   const roster=dayRoster(d,dateStr),range=mobileTimelineRange(roster);
   const pending=roster.pending.length?`<div class="mobile-pending"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
-  const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range,roster.now)).join("")||empty("users","本组暂无可排班成员");
-  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}</div></section>`
+  const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range)).join("")||empty("users","本组暂无可排班成员");
+  const nowLine=dateStr===todayStr()&&roster.now!=null&&range.first<=roster.now&&roster.now<=range.last?`<div class="mobile-timeline-now-layer" aria-hidden="true"><span class="mobile-timeline-now" style="--left:${mobileTimelinePercent(roster.now,range).toFixed(3)}%"></span></div>`:"";
+  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}${nowLine}</div></section>`
 }
 function mobileThreeDayAgenda(d,dateStr){
   const dates=[dateStr,dateAdd(dateStr,1),dateAdd(dateStr,2)];

@@ -656,6 +656,9 @@ async function auditMobileAccount(page, profile) {
     const dates = [schedDate, dateAdd(schedDate, 1), dateAdd(schedDate, 2)];
     const headerActions = ["alertBtn", "refresh", "mobileAccount"].map(id => document.getElementById(id)?.getBoundingClientRect()).filter(rect => rect && rect.width >= 44 && rect.height >= 44);
     const groupTabs = document.querySelector(".ws-dash .gtabs")?.getBoundingClientRect();
+    const visibleTimeline = mobile.querySelector(".mobile-day-section:not([hidden]) .mobile-timeline");
+    const timelineAxis = visibleTimeline?.querySelector(".mobile-timeline-axis");
+    const nowLine = visibleTimeline?.querySelector(".mobile-timeline-now");
     return {
       expectedPeople,
       dayButtons: dayButtons.length,
@@ -672,7 +675,11 @@ async function auditMobileAccount(page, profile) {
       legacyMatrix: mobile.querySelectorAll(".day-matrix,.day-status-board,.agenda-summary,.agenda-person,.mobile-roster-row").length,
       topbarHeight: document.querySelector(".topbar")?.getBoundingClientRect().height || 0,
       headerActions: headerActions.length,
-      actionsBeforeGroups: Boolean(groupTabs && headerActions.length === 3 && Math.max(...headerActions.map(rect => rect.bottom)) <= groupTabs.top + 1),
+      actionsSameRow: Boolean(groupTabs && headerActions.length === 3 && Math.abs(Math.min(...headerActions.map(rect => rect.top)) - groupTabs.top) <= 2 && groupTabs.right <= Math.min(...headerActions.map(rect => rect.left)) + 1),
+      groupTabsFullyVisible: Boolean(groupTabs && document.querySelector(".ws-dash .gtabs").scrollWidth <= document.querySelector(".ws-dash .gtabs").clientWidth + 1),
+      nowLayers: mobile.querySelectorAll(".mobile-day-section:not([hidden]) .mobile-timeline-now-layer").length,
+      rowNowLines: mobile.querySelectorAll(".mobile-day-section:not([hidden]) .mobile-timeline-row .mobile-timeline-now").length,
+      continuousNowLine: Boolean(visibleTimeline && timelineAxis && nowLine && Math.abs(nowLine.getBoundingClientRect().height - (visibleTimeline.getBoundingClientRect().height - timelineAxis.getBoundingClientRect().height)) <= 1),
       noHorizontalOverflow: mobile.scrollWidth <= mobile.clientWidth + 1,
       expectedDates: dates,
     };
@@ -683,7 +690,8 @@ async function auditMobileAccount(page, profile) {
       dayWorktable.dates.join("|") !== dayWorktable.expectedDates.join("|") ||
       dayWorktable.activeDate !== dayWorktable.expectedDates[0] || dayWorktable.jobs < 1 ||
       dayWorktable.axisTicks < 4 || dayWorktable.duplicateHeaders || dayWorktable.legacyMatrix ||
-      dayWorktable.topbarHeight > 2 || dayWorktable.headerActions !== 3 || !dayWorktable.actionsBeforeGroups ||
+      dayWorktable.topbarHeight > 2 || dayWorktable.headerActions !== 3 || !dayWorktable.actionsSameRow || !dayWorktable.groupTabsFullyVisible ||
+      dayWorktable.nowLayers !== 1 || dayWorktable.rowNowLines !== 0 || !dayWorktable.continuousNowLine ||
       !dayWorktable.noHorizontalOverflow) {
     throw new Error(`手机首页没有完整呈现紧凑的连续三日人员时间轴：${JSON.stringify(dayWorktable)}`);
   }
