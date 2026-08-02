@@ -255,6 +255,7 @@ select{appearance:none;-webkit-appearance:none;padding-right:26px;background-ima
 .assignment-person small{margin-top:2px;color:var(--green-text);font-size:9px}
 .assignment-person:hover{border-color:color-mix(in srgb,var(--accent) 48%,var(--line));background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
 .assignment-person.current{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}
+.assignment-person.preferred:not(.current){border-color:color-mix(in srgb,var(--green) 42%,var(--line));background:color-mix(in srgb,var(--green) 6%,var(--surface))}
 .assignment-person.current small{color:var(--accent)}
 .assignment-person:disabled{cursor:not-allowed;opacity:.46;background:var(--fill)}
 .assignment-person:disabled small{color:var(--muted)}
@@ -333,6 +334,7 @@ button.crew-state{border:0;background:transparent;font:inherit;text-align:left}
 .data-table td{padding:8px 8px;border-bottom:1px solid var(--line-soft);font-size:12px;vertical-align:middle}
 .data-table tr:last-child td{border-bottom:0}
 .data-table input,.data-table select{width:100%;height:34px;font-size:13px}
+.data-table .lighting-owner-cell{min-width:190px}
 .table-scroll{overflow:auto}
 .table-scroll .data-table{min-width:0}
 .data-table tbody tr:hover{background:color-mix(in srgb,var(--accent) 5%,transparent)}
@@ -1354,7 +1356,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802y";
+const APP_VERSION="v0802z";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -1876,9 +1878,13 @@ function assignable(person){return personAvail(person).assignable}
 function shiftCovers(shiftName,arrive){const t=toMinutes(arrive);if(t==null)return true;const s=shiftByName(shiftName);if(!s)return false;const a=toMinutes(s.start),b=toMinutes(s.end);if(a==null||b==null)return false;return b>a?(t>=a&&t<b):(t>=a||t<b)}
 function assignBlock(p,dateStr,arrive,order=null){if(!p)return"无此人";if(p.role==="team")return p.name+" 是下单方";if(p.intern)return p.name+" 实习不可派";const absence=absenceTypeOn(p,dateStr);if(absence)return p.name+` 当天${absence==="travel"?"出差":"请假"}`;const shift=effectiveShift(p,dateStr);if(!shift)return p.name+" 的班次配置不存在";if(shift.is_off)return p.name+" 当天排休";const task=(order&&order.task_type)||reqTask||"";const duration=Number((order&&order.minutes)||((state.sla||[]).find(rule=>rule.grp===p.grp&&rule.task_type===task)||{}).minutes||30);const start=toMinutes(arrive);if(start!=null){const norm=value=>value==null?null:(value<300?value+1440:value);const shiftStart=norm(toMinutes(shift.start));let shiftEnd=norm(toMinutes(shift.end));if(shiftStart!=null&&shiftEnd!=null&&shiftEnd<=shiftStart)shiftEnd+=1440;const orderStart=norm(start),orderEnd=orderStart+duration;if(shiftStart==null||shiftEnd==null||orderStart<shiftStart||orderEnd>shiftEnd)return p.name+" 的班次无法覆盖完整工时"}if(dateStr&&arrive){const orderStart=new Date(`${dateStr}T${arrive}:00`);if(start<300)orderStart.setDate(orderStart.getDate()+1);const orderEnd=new Date(orderStart.getTime()+duration*60000);const conflict=(state.orders||[]).find(item=>item.id!==(order&&order.id)&&item.assignee_id===p.open_id&&["assigned","in_progress","completion_review"].includes(item.status)&&new Date(String(item.scheduled_start||"").replace(" ","T"))<orderEnd&&new Date(String(item.scheduled_end||"").replace(" ","T"))>orderStart);if(conflict)return p.name+` 与工单 #${conflict.id} 时间冲突`}return null}
 function canAssign(p,dateStr,arrive,order=null){return !assignBlock(p,dateStr,arrive,order)}
+function teamRecord(reference){if(!reference)return null;if(typeof reference==="object"){const id=Number(reference.team_id||reference.id);return (state.teams||[]).find(team=>Number(team.id)===id)||(state.teams||[]).find(team=>team.name===reference.team)||null}return (state.teams||[]).find(team=>team.name===reference)||null}
+function preferredLightingOwner(reference,grp="灯光组"){const team=teamRecord(reference);return grp==="灯光组"&&team?String(team.lighting_owner_id||""):""}
+function prioritizeLightingStaff(people,reference,grp="灯光组"){const preferredId=preferredLightingOwner(reference,grp);return [...people].sort((a,b)=>(b.open_id===preferredId?1:0)-(a.open_id===preferredId?1:0))}
+function lightingRoomSummary(person){const rooms=(state.teams||[]).filter(team=>team.lighting_owner_id===person.open_id).map(team=>team.room||team.name);return rooms.length?`本职 ${rooms.join(" / ")}`:""}
 function firstTime(v){const m=/(\d{1,2}):(\d{2})/.exec(v||"");return m?`${m[1].padStart(2,"0")}:${m[2]}`:""}
 function reqArrive(){const sel=document.getElementById("requestTeam");const t=state.teams.find(x=>x.name===(sel&&sel.value))||state.teams[0];if(reqWhen==="now"){const d=new Date();return{date:todayStr(),arrive:`${pad2d(d.getHours())}:${pad2d(d.getMinutes())}`}}if(reqWhen==="book")return{date:reqDate||todayStr(),arrive:reqAt||"18:00"};return{date:todayStr(),arrive:""}}
-function reqAssigneeOptions(selected=""){const t=reqArrive();const nowMode=reqWhen==="now";const rule=(state.sla||[]).find(item=>item.grp===reqGroup&&item.task_type===reqTask);const draft={task_type:reqTask,minutes:(rule||{}).minutes||30};const opts=staffForGroup(reqGroup).filter(p=>canAssign(p,t.date,t.arrive,draft));return '<option value="">暂不指派 · 进待派队列</option>'+opts.map(p=>{const shift=effectiveShift(p,t.date);const tag=nowMode?personAvail(p).label:(shift&&shift.name||"未排班");return `<option value="${esc(p.open_id)}" ${p.open_id===selected?"selected":""}>${esc(p.name)} · ${esc(tag)}</option>`}).join("")}
+function reqAssigneeOptions(selected=""){const t=reqArrive();const nowMode=reqWhen==="now";const rule=(state.sla||[]).find(item=>item.grp===reqGroup&&item.task_type===reqTask);const draft={task_type:reqTask,minutes:(rule||{}).minutes||30};const selectedTeam=document.getElementById("requestTeam")?.value||reqTeam||state.teams?.[0]?.name;const preferredId=preferredLightingOwner(selectedTeam,reqGroup);const opts=prioritizeLightingStaff(staffForGroup(reqGroup).filter(p=>canAssign(p,t.date,t.arrive,draft)),selectedTeam,reqGroup);return '<option value="">暂不指派 · 进待派队列</option>'+opts.map(p=>{const shift=effectiveShift(p,t.date);const tag=nowMode?personAvail(p).label:(shift&&shift.name||"未排班");const duty=p.open_id===preferredId?" · 本职负责":"";return `<option value="${esc(p.open_id)}" ${p.open_id===selected?"selected":""}>${esc(p.name)}${duty} · ${esc(tag)}</option>`}).join("")}
 function refreshReqAssignee(){const as=document.getElementById("requestAssignee");if(as)as.innerHTML=reqAssigneeOptions(as.value)}
 function onDuty(person,nowM){const shift=effectiveShift(person);return Boolean(shift&&!shift.is_off&&shiftActive(shift,nowM))}
 function onDutyCount(){const g=scopeGroup();return (g?staffForGroup(g):(state.staff||[])).filter(isOnDuty).length}
@@ -2059,6 +2065,7 @@ function renderApp(){
           :"";
   document.getElementById("app").innerHTML=`<div class="app-shell"><aside class="side"><div class="side-brand"><span class="app-icon">${icon("lamp-ceiling")}</span><strong>团播派工</strong></div><nav class="nav">${navHtml}</nav><div class="side-bottom"><div class="connection"><span class="live-dot"></span>${state.test_mode?"测试库在线":"服务在线"} · ${APP_VERSION}</div><button class="user-row" id="logout" aria-label="退出当前账号">${avatar(me)}<span class="user-meta"><strong>${esc(me.name)}</strong><span>${me.role==="staff"&&me.lead?"组长":ROLE_LABEL[me.role]||me.role}</span></span>${icon("log-out",true)}</button></div></aside><main class="main" id="mainContent" tabindex="-1"><header class="topbar${topTabs?" has-tabs":""}"><div class="page-title"><h1>${title}</h1></div>${topTabs?`<div class="tb-tabs">${topTabs}</div>`:""}<div class="top-actions">${me.role!=="team"?`<span class="duty-pill" title="当前实际在岗人数"><span class="live-dot"></span>在岗 <b>${onDutyCount()}</b></span>`:""}<span class="clock">${currentTime}</span><button class="icon-btn" id="alertBtn" aria-label="提醒设置" title="提醒设置（声音/震动/通知）">${icon("bell")}</button><button class="icon-btn" id="themeToggle" aria-label="${THEME_META[themePref].label}" title="${THEME_META[themePref].label}">${icon(THEME_META[themePref].icon)}</button><button class="icon-btn" id="refresh" aria-label="刷新" title="刷新">${icon("refresh-cw")}</button><button class="icon-btn mobile-account" id="mobileAccount" aria-label="账户：${esc(me.name)}" title="账户">${avatar(me)}</button></div></header><div class="workspace ${page==="overview"||page==="dispatch"?"ws-wide":"ws-narrow"}${page==="overview"?" ws-dash":""}${page==="dispatch"?" ws-dispatch":""}">${srvVer&&srvVer!==APP_VERSION?`<div class="banner warn">前后端版本不一致：页面 ${APP_VERSION} / 服务 ${esc(srvVer)}——服务端还在跑旧代码，请在服务器上重启 server.py（用部署包里的「重启服务」脚本）后刷新</div>`:""}${state.test_mode?'<div class="banner info">测试模式，当前操作不会写入正式数据库</div>':""}${bootstrap}<div id="view">${renderPage()}</div></div></main><nav class="mobile-nav" aria-label="移动端主导航" style="--mobile-count:${mobileNav.length}">${mobileNavHtml}</nav></div>`;
   renderFeishuSettingsPanel();
+  applyLightingOwnerSettingsUi();
   bindShell();
   drawIcons();
   ensureTimerTick();
@@ -2082,11 +2089,11 @@ function fitSchedule(){const wrap=document.querySelector(".dg-wrap");if(!wrap)re
 let _fitBound=false;function bindFit(){if(_fitBound)return;_fitBound=true;window.addEventListener("resize",()=>{clearTimeout(window._fitT);window._fitT=setTimeout(fitSchedule,120)})}
 function renderPage(){if(me.role==="admin")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="crew"?adminCrew():page==="stats"?adminStats():page==="settings"?adminSettings():adminAudit();if(navKey()==="lead")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="work"?staffWork():page==="crew"?adminCrew():page==="audit"?adminAudit():adminStats();if(me.role==="staff")return page==="work"?staffWork():page==="request"?teamRequest():page==="open"?openOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard();return page==="request"?teamRequest():page==="orders"?teamOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard()}
 
-function staffOptions(selected="",grp="",order=null){const dateStr=order?(order.date||todayStr()):todayStr();const arrive=order?(order.arrive||""):"";const future=dateStr!==todayStr();const list=(grp?staffForGroup(grp):(state.staff||[])).filter(p=>canAssign(p,dateStr,arrive,order));return list.map(person=>{const shift=effectiveShift(person,dateStr);const tag=future?(shift&&shift.name||"未排班"):personAvail(person).label;return `<option value="${esc(person.open_id)}" ${person.open_id===selected?"selected":""}>${esc(person.name)} · ${esc(tag)}</option>`}).join("")||'<option value="">该时段本组无可派成员</option>'}
+function staffOptions(selected="",grp="",order=null){const dateStr=order?(order.date||todayStr()):todayStr();const arrive=order?(order.arrive||""):"";const future=dateStr!==todayStr();const preferredId=preferredLightingOwner(order,grp);const list=prioritizeLightingStaff((grp?staffForGroup(grp):(state.staff||[])).filter(p=>canAssign(p,dateStr,arrive,order)),order,grp);return list.map(person=>{const shift=effectiveShift(person,dateStr);const tag=future?(shift&&shift.name||"未排班"):personAvail(person).label;const duty=person.open_id===preferredId?" · 本职负责":"";return `<option value="${esc(person.open_id)}" ${person.open_id===selected?"selected":""}>${esc(person.name)}${duty} · ${esc(tag)}</option>`}).join("")||'<option value="">该时段本组无可派成员</option>'}
 function assignmentReason(person,order){const reason=assignBlock(person,order.date||todayStr(),order.arrive,order);return reason?reason.replace(new RegExp(`^${String(person.name).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\s*`),""):"可派"}
 function assignmentPickerHtml(order){
-  const people=staffForGroup(order.grp).filter(person=>!person.intern&&person.role!=="team"),current=order.assignee_id||"";
-  const buttons=people.map(person=>{const selected=person.open_id===current,reason=selected?"当前负责人":assignmentReason(person,order),blocked=!selected&&reason!=="可派";return `<button type="button" class="assignment-person ${selected?"current":""}" data-direct-assign="${order.id}" data-worker-id="${esc(person.open_id)}"${selected?' aria-current="true"':""}${blocked?` disabled title="${esc(reason)}"`:""}>${avatar(person)}<span><strong>${esc(person.name)}</strong><small>${esc(reason)}</small></span></button>`}).join("");
+  const preferredId=preferredLightingOwner(order,order.grp),people=prioritizeLightingStaff(staffForGroup(order.grp).filter(person=>!person.intern&&person.role!=="team"),order,order.grp),current=order.assignee_id||"";
+  const buttons=people.map(person=>{const selected=person.open_id===current,preferred=person.open_id===preferredId,baseReason=selected?"当前负责人":assignmentReason(person,order),reason=preferred&&!selected?`本职负责 · ${baseReason}`:baseReason,blocked=!selected&&baseReason!=="可派";return `<button type="button" class="assignment-person ${selected?"current":""} ${preferred?"preferred":""}" data-direct-assign="${order.id}" data-worker-id="${esc(person.open_id)}"${selected?' aria-current="true"':""}${blocked?` disabled title="${esc(reason)}"`:""}>${avatar(person)}<span><strong>${esc(person.name)}</strong><small>${esc(reason)}</small></span></button>`}).join("");
   const withdraw=current?`<button type="button" class="assignment-withdraw" data-unassign-order="${order.id}">撤回待派</button>`:"";
   return `<section class="assignment-picker detail-assignment"><div class="assignment-picker-head"><strong>直接安排负责人</strong><span>${current?`当前 ${esc(order.assignee_name||"已指派")}`:"尚未指派"}</span></div><div class="assignment-people">${buttons||'<span class="dim">本组暂无工作人员</span>'}${withdraw}</div></section>`
 }
@@ -2684,7 +2691,7 @@ function adminCrew(){const isA=me.role==="admin";const users=isA?(state.users||[
 const a=personAvail(u);
 const isSelf=u.open_id===me.open_id;
 const st=!isSelf?`<button type="button" class="crew-state ${a.cls}" data-person-state="${esc(u.open_id)}"><span class="status-dot"></span>${a.label}</button>`:`<span class="crew-state ${a.cls}"><span class="status-dot"></span>${a.label}</span>`;
-const who=`<div class="ca-who">${avatar(u)}<div class="ca-nm">${isA?`<input class="alias-in" data-user="${esc(u.open_id)}" data-field="alias" value="${esc(u.alias||"")}" placeholder="${esc(u.fs_name||u.name)}" maxlength="20" title="显示名,整个软件都用它;留空=用飞书名「${esc(u.fs_name||u.name)}」">`:`<strong>${esc(u.name)}</strong>`}<span class="dim">${isA?`飞书:${esc(u.fs_name||u.name)}`:(u.last_login?esc((u.last_login||"").slice(5,16))+" 登录":"—")}</span></div></div>`;
+const responsibility=lightingRoomSummary(u);const who=`<div class="ca-who">${avatar(u)}<div class="ca-nm">${isA?`<input class="alias-in" data-user="${esc(u.open_id)}" data-field="alias" value="${esc(u.alias||"")}" placeholder="${esc(u.fs_name||u.name)}" maxlength="20" title="显示名,整个软件都用它;留空=用飞书名「${esc(u.fs_name||u.name)}」">`:`<strong>${esc(u.name)}</strong>`}<span class="dim">${isA?`飞书:${esc(u.fs_name||u.name)}`:(u.last_login?esc((u.last_login||"").slice(5,16))+" 登录":"—")}${responsibility?` · ${esc(responsibility)}`:""}</span></div></div>`;
 const idSel=isA?`<label class="ca-f"><i class="ca-lab">身份</i><span class="ca-ro">${esc(IDLBL[idOf(u)]||"组员")}<i class="dim"> · 在账号页修改</i></span></label>`:isSelf?`<label class="ca-f"><i class="ca-lab">身份</i><span class="ca-ro">${esc(IDLBL[idOf(u)]||"组员")}<i class="dim"> · 本人不可改</i></span></label>`:`<label class="ca-f"><i class="ca-lab">身份</i><select data-identity="${esc(u.open_id)}">${idOpts.map(([v,l])=>`<option value="${v}" ${v===idOf(u)?"selected":""}>${l}</option>`).join("")}</select></label>`;const grpSel=isA?`<label class="ca-f"><i class="ca-lab">组别</i><span class="ca-ro">${esc(u.grp||"未分组")}</span></label>`:"";const shift=`<label class="ca-f"><i class="ca-lab">默认班次</i><select data-user="${esc(u.open_id)}" data-field="shift">${(state.shifts||[]).map(s=>`<option ${s.name===u.shift?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label>`;const resting=a.label==="小休";const restBtn=resting?`<button class="text-btn amber" data-rest="${esc(u.open_id)}">${icon("play",true)}结束小休</button>`:"";const absence=absenceTypeOn(u),future=Boolean(u.absence_type&&u.absence_start>todayStr());const absenceLabel=absence?`${absence==="travel"?"出差":"请假"}至 ${String(u.absence_end).slice(5)}`:future?`${u.absence_type==="travel"?"出差":"请假"} ${String(u.absence_start).slice(5)}`:"离岗安排";const leave=`<div class="ca-tail">${restBtn}<button class="text-btn ${absence||future?"amber":""}" data-leave="${esc(u.open_id)}">${icon(u.absence_type==="travel"?"briefcase-business":"calendar-off",true)}${esc(absenceLabel)}</button></div>`;return `<div class="ca-row">${st}${who}${idSel}${shift}${grpSel}${leave}</div>`};const body=sections.map(sec=>{const onN=sec.members.filter(isOnDuty).length;const hdr=`<div class="crew-sec"><span class="crew-sec-dot" style="background:${sec.color}"></span><strong>${esc(sec.name)}</strong><span class="dim">${sec.members.length} 人${onN?" · 在岗 "+onN:""}</span></div>`;return hdr+sec.members.map(rowHtml).join("")}).join("")||empty("users",isA?"还没有人登录":"本组暂无成员");return `${isA?groupTabsHtml():""}${shiftOverviewPanel(gsel)}<div style="height:14px"></div><section class="panel"><div class="panel-head"><div><h2>${esc(head[0])}${gsel?` · ${esc(gsel)}`:""}</h2><p>${esc(head[1])}</p></div></div><div class="crew-tbl ${isA?"as-admin":"as-lead"}">${th}${body}</div></section>`}
 function adminSettings(){
 const bar=`<div class="pgtabs settings-navigation" style="margin-bottom:12px"><div class="adaptive-filter-tabs">${cfgSecTabs(true)}</div>${mobileChoiceHtml("settingsSectionSelect","配置项",SETTINGS_SECTIONS.map(section=>[section,section]),cfgSec)}</div>`;
@@ -3221,7 +3228,8 @@ function applyCrewGovernanceUi(){
       if(nameBox){
         const summary=document.createElement("span");
         summary.className="crew-summary";
-        summary.textContent=`${accountRoleLabel(person)} · ${person.shift||"未排班"}`;
+        const responsibility=lightingRoomSummary(person);
+        summary.textContent=`${accountRoleLabel(person)} · ${person.shift||"未排班"}${responsibility?` · ${responsibility}`:""}`;
         nameBox.appendChild(summary)
       }
       const disclosure=document.createElement("button");
@@ -3254,6 +3262,38 @@ function applyCrewGovernanceUi(){
   });
   if(iconsAdded&&window.lucide)window.lucide.createIcons();
   applyCrewSearch()
+}
+function applyLightingOwnerSettingsUi(){
+  if(page!=="settings"||me.role!=="admin")return;
+  const heading=[...document.querySelectorAll(".settings-wrap h2")].find(node=>node.textContent==="直播团队");
+  const panel=heading?.closest(".panel");
+  if(!panel||panel.dataset.lightingOwners==="1")return;
+  panel.dataset.lightingOwners="1";
+  const intro=heading.parentElement?.querySelector("p");
+  if(intro)intro.textContent="按团队设置直播间和本职灯光师；自动派单优先本职负责人，但管理员和组长仍可安排任意可派成员";
+  const table=panel.querySelector(".data-table");
+  const headRow=table?.querySelector("thead tr");
+  if(!table||!headRow)return;
+  const ownerHead=document.createElement("th");
+  ownerHead.textContent="本职灯光师";
+  headRow.insertBefore(ownerHead,headRow.lastElementChild);
+  const owners=(state.staff||[]).filter(person=>person.grp==="灯光组"&&!Number(person.intern));
+  table.querySelectorAll("tbody tr").forEach(row=>{
+    const teamId=Number(row.querySelector('[data-entity="teams"][data-field="name"]')?.dataset.id);
+    const team=(state.teams||[]).find(item=>Number(item.id)===teamId);
+    if(!team)return;
+    const cell=document.createElement("td");
+    cell.className="lighting-owner-cell";
+    cell.dataset.label="本职灯光师";
+    const select=document.createElement("select");
+    select.dataset.entity="teams";
+    select.dataset.id=String(team.id);
+    select.dataset.field="lighting_owner_id";
+    select.setAttribute("aria-label",`${team.name}的本职灯光师`);
+    select.innerHTML='<option value="">未指定</option>'+owners.map(person=>`<option value="${esc(person.open_id)}" ${person.open_id===team.lighting_owner_id?"selected":""}>${esc(person.name)}</option>`).join("");
+    cell.appendChild(select);
+    row.insertBefore(cell,row.lastElementChild)
+  })
 }
 
 const READ_ONLY_CONTROLS=[

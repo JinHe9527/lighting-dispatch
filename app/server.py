@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802y"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802z"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -144,7 +144,8 @@ CREATE TABLE IF NOT EXISTS users(
 CREATE TABLE IF NOT EXISTS teams(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL, room TEXT DEFAULT '',
-  rehearsal TEXT DEFAULT '', onair TEXT DEFAULT ''
+  rehearsal TEXT DEFAULT '', onair TEXT DEFAULT '',
+  lighting_owner_id TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS sla(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,6 +258,7 @@ def init_db():
                                     "approved": "INTEGER DEFAULT 0",
                                     "blocked": "INTEGER DEFAULT 0",
                                     "read_only": "INTEGER DEFAULT 0"})
+    ensure_columns(conn, "teams", {"lighting_owner_id": "TEXT DEFAULT ''"})
     # 准入门:老用户一次性放行;此后新的飞书登录默认「待审核」,管理员在人员页放行
     if conn.execute("SELECT v FROM settings WHERE k='approved_migrated'").fetchone() is None:
         conn.execute("UPDATE users SET approved=1")
@@ -327,6 +329,14 @@ def init_db():
             )
         conn.execute("UPDATE settings SET v='1' WHERE k='bootstrap_used'")
     business.migrate(conn)
+    conn.execute(
+        """UPDATE teams SET lighting_owner_id=''
+           WHERE lighting_owner_id!='' AND NOT EXISTS(
+             SELECT 1 FROM users u WHERE u.open_id=teams.lighting_owner_id
+             AND u.role='staff' AND u.grp='灯光组' AND COALESCE(u.intern,0)=0
+             AND COALESCE(u.approved,0)=1 AND COALESCE(u.blocked,0)=0
+           )"""
+    )
     # 账号角色决定唯一的数据作用域，清理旧版本留下的跨角色字段。
     conn.execute(
         """UPDATE users
@@ -500,8 +510,8 @@ def assign_block(conn, u, order_date, arrive):
     return None
 
 
-def pick_auto_assignee(conn, grp, order_date, arrive):
-    """自动派单:挑本组 空闲+在班+非实习+未请假 且当天已派单最少的人(公平轮转);无则 None。"""
+def pick_auto_assignee(conn, grp, order_date, arrive, preferred_id=""):
+    """自动派单:本职负责人可派时优先，否则在本组可派人员中公平轮转。"""
     cands = conn.execute(
         "SELECT * FROM users WHERE grp=? AND role!='team' AND status='free' "
         "AND COALESCE(intern,0)=0", (grp,)).fetchall()
@@ -509,6 +519,8 @@ def pick_auto_assignee(conn, grp, order_date, arrive):
     for u in cands:
         if assign_block(conn, u, order_date, arrive):
             continue
+        if preferred_id and u["open_id"] == preferred_id:
+            return u
         load = conn.execute("SELECT COUNT(*) c FROM orders WHERE assignee_id=? AND date=?",
                             (u["open_id"], order_date)).fetchone()["c"]
         if best is None or load < best_load:
@@ -1429,6 +1441,8 @@ def api_state(user):
     if user["role"] == "team":
         team_id = business.bound_team_id(user)
         teams = [dict(r) for r in conn.execute("SELECT * FROM teams WHERE id=?", (team_id,))] if team_id else []
+        for team in teams:
+            team.pop("lighting_owner_id", None)
     else:
         teams = [dict(r) for r in conn.execute("SELECT * FROM teams ORDER BY id")]
     if user["role"] == "staff":
@@ -2055,7 +2069,8 @@ def do_order(user, body):
     if not assigned:  # 自动派单:该组开了自动 且 没手动指派 → 自动挑人
         grow = conn.execute("SELECT COALESCE(auto,0) auto FROM groups WHERE name=?", (grp,)).fetchone()
         if grow and grow["auto"]:
-            tech = pick_auto_assignee(conn, grp, order_date, arrive)
+            preferred_id = tm["lighting_owner_id"] if grp == "灯光组" else ""
+            tech = pick_auto_assignee(conn, grp, order_date, arrive, preferred_id)
             if tech:
                 conn.execute("UPDATE orders SET assignee_id=?,assignee_name=?,status='working',accepted_at=? WHERE id=?",
                              (tech["open_id"], dn(tech), now_iso(), oid))
@@ -2389,7 +2404,7 @@ def do_order_edit(user, body):
 
 
 SAVE_WHITELIST = {
-    "teams": {"name", "room", "rehearsal", "onair"},
+    "teams": {"name", "room", "rehearsal", "onair", "lighting_owner_id"},
     "sla": {"task_type", "minutes", "buffer", "note", "grp"},
     "shifts": {"name", "start", "end", "sort"},
     "users": {"role", "grp", "lead", "shift", "status", "work_hours", "intern",
@@ -2592,6 +2607,15 @@ def do_save(user, body):
             fields["read_only"] = 0
         sets = ",".join(f"{k}=?" for k in fields)
         conn.execute(f"UPDATE users SET {sets} WHERE open_id=?", (*fields.values(), oid))
+        updated_user = conn.execute("SELECT * FROM users WHERE open_id=?", (oid,)).fetchone()
+        if not (
+            updated_user["role"] == "staff"
+            and (updated_user["grp"] or "") == "灯光组"
+            and not updated_user["intern"]
+            and updated_user["approved"]
+            and not updated_user["blocked"]
+        ):
+            conn.execute("UPDATE teams SET lighting_owner_id='' WHERE lighting_owner_id=?", (oid,))
         if fields.get("blocked") == 1 or fields.get("approved") == 0:
             conn.execute("DELETE FROM sessions WHERE open_id=?", (oid,))
         target_desc = target_user["name"]
@@ -2614,6 +2638,18 @@ def do_save(user, body):
             if onair and not first_schedule_time(onair):
                 conn.close()
                 return 400, "开播时间格式应为 HH:MM"
+            if "lighting_owner_id" in fields:
+                fields["lighting_owner_id"] = str(fields["lighting_owner_id"] or "").strip()
+                if fields["lighting_owner_id"]:
+                    owner = conn.execute(
+                        """SELECT 1 FROM users WHERE open_id=? AND role='staff' AND grp='灯光组'
+                           AND COALESCE(intern,0)=0 AND COALESCE(approved,0)=1
+                           AND COALESCE(blocked,0)=0""",
+                        (fields["lighting_owner_id"],),
+                    ).fetchone()
+                    if not owner:
+                        conn.close()
+                        return 400, "本职灯光师必须是已授权的灯光组正式成员"
         if entity == "sla":
             if "task_type" in fields:
                 fields["task_type"] = str(fields["task_type"] or "").strip()

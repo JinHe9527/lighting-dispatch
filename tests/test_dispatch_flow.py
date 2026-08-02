@@ -38,6 +38,8 @@ class DispatchFlowTests(unittest.TestCase):
         conn.execute("DELETE FROM orders")
         conn.execute("DELETE FROM notification_outbox")
         conn.execute("DELETE FROM staff_shift_overrides")
+        conn.execute("UPDATE teams SET lighting_owner_id=''")
+        conn.execute("UPDATE groups SET auto=0")
         conn.execute(
             """UPDATE users SET status='free',task='',approved=1,blocked=0,read_only=0,
                       absence_type='',absence_start='',absence_end='',team_id=NULL
@@ -195,6 +197,100 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(lead_account["grp"], "灯光组")
         self.assertEqual(lead_account["lead"], 1)
         self.assertEqual(lead_account["read_only"], 0)
+
+    def test_lighting_owner_is_preferred_but_never_restricts_managers(self):
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "teams",
+                    "record": {
+                        "id": self.team_row["id"],
+                        "lighting_owner_id": self.staff["open_id"],
+                    },
+                },
+            ),
+            (200, None),
+        )
+        conn = server.db()
+        conn.execute("UPDATE groups SET auto=1 WHERE name='灯光组'")
+        conn.commit()
+        conn.close()
+
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin")), (200, None))
+        self.assertEqual(self.latest_order()["assignee_id"], self.staff["open_id"])
+
+        body = self.order_body(17, "admin")
+        body["assignee"] = self.lead["open_id"]
+        self.assertEqual(server.SERVICE.order(self.admin, body), (200, None))
+        self.assertEqual(self.latest_order()["assignee_id"], self.lead["open_id"])
+
+    def test_unavailable_lighting_owner_falls_back_and_invalid_owner_is_cleared(self):
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "teams",
+                    "record": {
+                        "id": self.team_row["id"],
+                        "lighting_owner_id": self.staff["open_id"],
+                    },
+                },
+            ),
+            (200, None),
+        )
+        work_date = self.order_body(18, "admin")["date"]
+        conn = server.db()
+        conn.execute("UPDATE groups SET auto=1 WHERE name='灯光组'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.admin,
+                {
+                    "date": work_date,
+                    "changes": [{"worker_id": self.staff["open_id"], "mode": "off"}],
+                },
+            ),
+            (200, None),
+        )
+
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(18, "admin")), (200, None))
+        self.assertEqual(self.latest_order()["assignee_id"], self.lead["open_id"])
+
+        code, message = server.do_save(
+            self.admin,
+            {
+                "entity": "teams",
+                "record": {
+                    "id": self.team_row["id"],
+                    "lighting_owner_id": self.admin["open_id"],
+                },
+            },
+        )
+        self.assertEqual(code, 400)
+        self.assertIn("灯光组正式成员", message)
+
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.staff["open_id"],
+                        "role": "team",
+                        "team_id": self.team_row["id"],
+                    },
+                },
+            ),
+            (200, None),
+        )
+        conn = server.db()
+        owner_id = conn.execute(
+            "SELECT lighting_owner_id FROM teams WHERE id=?", (self.team_row["id"],)
+        ).fetchone()["lighting_owner_id"]
+        conn.close()
+        self.assertEqual(owner_id, "")
 
     def test_init_db_normalizes_legacy_account_scope_fields(self):
         conn = server.db()
@@ -1196,6 +1292,7 @@ class DispatchFlowTests(unittest.TestCase):
         state = server.api_state(self.team)
         self.assertEqual(state["staff"], [])
         self.assertEqual(len(state["teams"]), 1)
+        self.assertNotIn("lighting_owner_id", state["teams"][0])
         self.assertTrue(all(order["team_id"] == self.team_row["id"] for order in state["orders"]))
         code, stats = server.api_stats(self.team, {"range": "30d"})
         self.assertEqual(code, 200)

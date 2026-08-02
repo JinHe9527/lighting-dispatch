@@ -659,6 +659,31 @@ async function auditMobileAccount(page, profile) {
   await admin.screenshot({ path: "/tmp/dispatch-admin-smoke.png", fullPage: true });
   await admin.setViewportSize({ width: 2048, height: 1152 });
   await admin.locator('[data-page="settings"]').first().click();
+  await admin.locator('[data-cfgsec="直播团队"]').first().click();
+  const ownerSelect = admin.locator('[data-entity="teams"][data-field="lighting_owner_id"]').first();
+  if (await ownerSelect.count() !== 1) throw new Error("直播团队配置缺少本职灯光师选择器");
+  await ownerSelect.selectOption("test:staff");
+  await admin.waitForFunction(() => state.teams[0]?.lighting_owner_id === "test:staff");
+  const lightingPriority = await admin.evaluate(() => {
+    const team = state.teams[0];
+    reqWhen = "book";
+    reqDate = addDaysStr(1);
+    reqAt = "15:00";
+    reqGroup = "灯光组";
+    reqTeam = team.name;
+    reqTask = state.sla.find(item => item.grp === "灯光组" && !item.task_type.includes("编歌"))?.task_type || "";
+    const holder = document.createElement("select");
+    holder.innerHTML = reqAssigneeOptions();
+    const choices = [...holder.options].filter(option => option.value);
+    return {
+      owner: team.lighting_owner_id,
+      first: choices[0]?.value || "",
+      firstLabel: choices[0]?.textContent || "",
+    };
+  });
+  if (lightingPriority.owner !== "test:staff" || lightingPriority.first !== "test:staff" || !lightingPriority.firstLabel.includes("本职负责")) {
+    throw new Error(`下单选人没有优先显示本职灯光师：${JSON.stringify(lightingPriority)}`);
+  }
   const desktopLayout = await admin.evaluate(() => {
     const workspace = document.querySelector(".workspace").getBoundingClientRect();
     const settings = document.querySelector(".settings-wrap").getBoundingClientRect();

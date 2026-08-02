@@ -579,6 +579,17 @@ def fair_assignee(conn, order):
     candidates = eligible_workers(conn, order)
     if not candidates:
         return None
+    if order["grp"] == "灯光组":
+        team_id = order["team_id"] if "team_id" in order.keys() else None
+        team = conn.execute(
+            "SELECT lighting_owner_id FROM teams WHERE id=?", (team_id,)
+        ).fetchone() if team_id else conn.execute(
+            "SELECT lighting_owner_id FROM teams WHERE name=?", (order["team"],)
+        ).fetchone()
+        preferred_id = (team["lighting_owner_id"] or "") if team else ""
+        preferred = next((worker for worker in candidates if worker["open_id"] == preferred_id), None)
+        if preferred:
+            return preferred
     try:
         window_end = (datetime.strptime(order["date"], "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
     except (TypeError, ValueError):
