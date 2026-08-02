@@ -1089,9 +1089,10 @@ async function auditMobileAccount(page, profile) {
   const desktopDispatchRow = await admin.evaluate(() => {
     const row = document.querySelector(".dispatch-panel .dispatch-order-row");
     const boxes = row ? [...row.children].map(child => child.getBoundingClientRect()) : [];
+    const centers = boxes.map(box => box.top + box.height / 2);
     return {
       height: row?.getBoundingClientRect().height || 0,
-      aligned: boxes.length === 5 && Math.max(...boxes.map(box => box.top)) - Math.min(...boxes.map(box => box.top)) <= 12,
+      aligned: boxes.length === 5 && Math.max(...centers) - Math.min(...centers) <= 2,
       columns: boxes.length,
     };
   });
@@ -1099,6 +1100,15 @@ async function auditMobileAccount(page, profile) {
     throw new Error(`桌面调度工单没有压成单行：${JSON.stringify(desktopDispatchRow)}`);
   }
   await admin.screenshot({ path: "/tmp/dispatch-admin-desktop-dispatch.png", fullPage: true });
+  await admin.setViewportSize({ width: 768, height: 900 });
+  const mediumDispatchRow = await admin.evaluate(() => {
+    const row = document.querySelector(".dispatch-panel .dispatch-order-row"),boxes=row?[...row.children].map(child=>child.getBoundingClientRect()):[],centers=boxes.map(box=>box.top+box.height/2);
+    return {height:row?.getBoundingClientRect().height||0,aligned:boxes.length===5&&Math.max(...centers)-Math.min(...centers)<=2,timeLayout:row?getComputedStyle(row.querySelector(".order-time")).display:""};
+  });
+  if (mediumDispatchRow.height > 62 || !mediumDispatchRow.aligned || mediumDispatchRow.timeLayout !== "flex") {
+    throw new Error(`中等宽度调度工单仍然错位：${JSON.stringify(mediumDispatchRow)}`);
+  }
+  await admin.screenshot({ path: "/tmp/dispatch-admin-medium-dispatch.png", fullPage: true });
   await admin.setViewportSize({ width: 390, height: 844 });
   const denseOrderRendering = await admin.evaluate(() => {
     const seed = state.orders[0];

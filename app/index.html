@@ -230,7 +230,10 @@ select{appearance:none;-webkit-appearance:none;padding-right:26px;background-ima
 .order-actions .text-btn{height:30px}
 .order-actions .field-issue{flex-basis:100%;margin:0;text-align:left}
 .dispatch-order-row{grid-template-columns:72px minmax(220px,1fr) minmax(100px,.55fr) auto auto;min-height:60px;padding-top:8px;padding-bottom:8px;gap:12px}
-.dispatch-order-main{min-width:0;display:flex;align-items:baseline;gap:8px}
+.dispatch-order-row .order-time{min-width:0;display:flex;align-items:baseline;gap:5px;white-space:nowrap}
+.dispatch-order-row .order-time strong{line-height:1}
+.dispatch-order-row .order-time span{margin:0;font-size:9px}
+.dispatch-order-main{min-width:0;display:flex;align-items:center;gap:8px}
 .dispatch-order-main strong{font-size:14px;white-space:nowrap}
 .dispatch-order-main span{min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dispatch-room{flex:none;padding:2px 6px;border:1px solid color-mix(in srgb,var(--room-color) 34%,transparent);border-radius:5px;background:color-mix(in srgb,var(--room-color) 12%,transparent);color:color-mix(in srgb,var(--room-color) 78%,var(--text));font-weight:700}
@@ -1031,7 +1034,7 @@ button.dp:hover{border-color:var(--line)}
   .order-meta{display:contents}
   .mobile-assignee{display:inline-flex!important;align-items:center;gap:5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)!important;font-size:13px!important;font-weight:600;margin:0!important}
   .mobile-assignee .icon{color:var(--accent)}
-  .order-row>div:nth-last-child(2){align-self:start;margin-top:1px}
+  .order-row:not(.dispatch-order-row)>div:nth-last-child(2){align-self:start;margin-top:1px}
   .order-actions{grid-column:2/4;justify-content:flex-start;margin-top:2px;gap:8px}.order-actions select{height:44px;max-width:180px}.order-actions .text-btn{min-height:44px}
   .review-row{grid-template-columns:1fr;padding:14px 16px;gap:9px}.review-actions{justify-content:flex-start}.review-actions .text-btn{min-height:44px}
   .status-governance{min-height:0}
@@ -1098,14 +1101,14 @@ button.dp:hover{border-color:var(--line)}
   .ws-dispatch .adaptive-filter-row{top:max(6px,env(safe-area-inset-top))}
   .ws-dispatch .dispatch-panel>.panel-head{display:none}
   .ws-dispatch .dispatch-order-row{position:relative;grid-template-columns:48px minmax(0,1fr) auto auto auto;align-items:center;gap:7px;min-height:58px;padding:8px 10px}
-  .ws-dispatch .dispatch-order-main{display:flex;gap:6px;align-items:baseline}
+  .ws-dispatch .dispatch-order-main{display:flex;gap:6px;align-items:center}
   .ws-dispatch .dispatch-order-main strong{font-size:13px}
   .ws-dispatch .dispatch-order-main span{font-size:11px}
   .ws-dispatch .dispatch-order-owner{font-size:11px}
   .ws-dispatch .dispatch-order-status .tag{font-size:10px;padding:3px 6px}
   .ws-dispatch .dispatch-order-open .order-extra{width:44px;height:44px;padding:0}
   .ws-dispatch .dispatch-order-open .order-extra span{display:none}
-  .ws-dispatch .order-time span{display:block;margin-top:2px;font-size:8px}
+  .ws-dispatch .order-time span{margin:0;font-size:8px}
   .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
   .dash::-webkit-scrollbar{display:none}
   .dash-lb{width:auto;padding-bottom:0}
@@ -1320,7 +1323,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802s";
+const APP_VERSION="v0802t";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2136,7 +2139,10 @@ function showDetail(el){
   const dispute=node.querySelector("#dmDisputeBtn");if(dispute)dispute.onclick=()=>{close();disputeCompletion(oid)};
 }
 function orderRow(order,mode="view"){
-  if(mode==="dispatch")return `<div class="order-row dispatch-order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong><span>${order.urgent?"紧急·尽快":isOverdue(order)?"已逾期":(orderDayLabel(order)?orderDayLabel(order)+"到岗":"到岗时间")}</span></div><div class="dispatch-order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span class="dispatch-room" style="--room-color:${timelineTaskColor(order)}">${esc(timelineRoomLabel(order))}</span><span class="dispatch-task">${esc(order.task_type)}</span></div><div class="dispatch-order-owner">${icon("user-round",true)}${esc(order.assignee_name)||"待派工"}</div><div class="dispatch-order-status">${orderTag(order,true)}</div><div class="dispatch-order-open">${orderProgress(order)}${orderExtra(order)}</div></div>`;
+  if(mode==="dispatch"){
+    const timeHint=order.urgent?"紧急":isOverdue(order)?"逾期":(orderDayLabel(order)?orderDayLabel(order):"");
+    return `<div class="order-row dispatch-order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong>${timeHint?`<span>${esc(timeHint)}</span>`:""}</div><div class="dispatch-order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span class="dispatch-room" style="--room-color:${timelineTaskColor(order)}">${esc(timelineRoomLabel(order))}</span><span class="dispatch-task">${esc(order.task_type)}</span></div><div class="dispatch-order-owner">${icon("user-round",true)}${esc(order.assignee_name)||"待派工"}</div><div class="dispatch-order-status">${orderTag(order,true)}</div><div class="dispatch-order-open">${orderProgress(order)}${orderExtra(order)}</div></div>`
+  }
   let actions="";const pendingStart=order.time_review&&order.time_review.status==="pending"&&order.time_review.kind==="retro_start";if(mode==="staff"&&order.status==="pending"){actions=`<button class="text-btn amber" data-take="${order.id}">${icon("hand",true)}接单</button>`;}else if(mode==="mine"&&order.status==="assigned"){actions=pendingStart?`<span class="tag s-review"><span class="status-dot"></span>补报待核实</span>`:`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn" data-report-start="${order.id}">${icon("history",true)}补报</button><button class="text-btn amber" data-start="${order.id}">${icon("play",true)}开始任务</button>`;}else if(mode==="mine"&&order.status==="in_progress"){actions=`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn amber" data-complete="${order.id}">${icon("check",true)}结束跟播</button>`;}else if(mode==="mine"&&order.status==="completion_review"){actions=`<span class="tag s-review"><span class="status-dot"></span>等待时间核实</span>`;}return `<div class="order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong><span>${order.urgent?"紧急·尽快":isOverdue(order)?"已逾期":(orderDayLabel(order)?orderDayLabel(order)+"到岗":"到岗时间")}</span></div><div class="order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span>${esc(order.room)} · ${esc(order.task_type)}</span><div class="order-meta">${order.grp?groupChip(order.grp):""}<span class="mobile-assignee">${icon("user-round",true)}${esc(order.assignee_name)||"待派工"}</span>${orderProgress(order)}${orderExtra(order)}</div></div><div class="order-detail"><strong>${esc(order.assignee_name)||"未指派"}</strong><span>预计 ${order.minutes} 分钟 · 基准 ${esc(order.base_time)}</span></div><div>${orderTag(order)}</div><div class="order-actions">${actions}</div></div>`}
 function ordersPanel(orders,mode,title="工单队列",subtitle="",emptyLabel=""){
   const emptyText=emptyLabel||({"今日工单":"今日暂无工单","今日处理进度":"今日暂无处理任务","未来排期与待开始任务":"暂无待开始任务","可接工单":"暂无可接工单","我的自助工单":"暂无自助工单","本团队工单进度":"本团队暂无工单"}[title]||"暂无待派工单");
