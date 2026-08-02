@@ -654,6 +654,8 @@ async function auditMobileAccount(page, profile) {
     const dayButtons = [...mobile.querySelectorAll("[data-mobile-day]")];
     const sections = [...mobile.querySelectorAll("[data-mobile-day-section]")];
     const dates = [schedDate, dateAdd(schedDate, 1), dateAdd(schedDate, 2)];
+    const headerActions = ["alertBtn", "refresh", "mobileAccount"].map(id => document.getElementById(id)?.getBoundingClientRect()).filter(rect => rect && rect.width >= 44 && rect.height >= 44);
+    const groupTabs = document.querySelector(".ws-dash .gtabs")?.getBoundingClientRect();
     return {
       expectedPeople,
       dayButtons: dayButtons.length,
@@ -669,6 +671,8 @@ async function auditMobileAccount(page, profile) {
       duplicateHeaders: mobile.querySelectorAll(".mobile-day-head,.mobile-person-list").length,
       legacyMatrix: mobile.querySelectorAll(".day-matrix,.day-status-board,.agenda-summary,.agenda-person,.mobile-roster-row").length,
       topbarHeight: document.querySelector(".topbar")?.getBoundingClientRect().height || 0,
+      headerActions: headerActions.length,
+      actionsBeforeGroups: Boolean(groupTabs && headerActions.length === 3 && Math.max(...headerActions.map(rect => rect.bottom)) <= groupTabs.top + 1),
       noHorizontalOverflow: mobile.scrollWidth <= mobile.clientWidth + 1,
       expectedDates: dates,
     };
@@ -679,7 +683,8 @@ async function auditMobileAccount(page, profile) {
       dayWorktable.dates.join("|") !== dayWorktable.expectedDates.join("|") ||
       dayWorktable.activeDate !== dayWorktable.expectedDates[0] || dayWorktable.jobs < 1 ||
       dayWorktable.axisTicks < 4 || dayWorktable.duplicateHeaders || dayWorktable.legacyMatrix ||
-      dayWorktable.topbarHeight > 2 || !dayWorktable.noHorizontalOverflow) {
+      dayWorktable.topbarHeight > 2 || dayWorktable.headerActions !== 3 || !dayWorktable.actionsBeforeGroups ||
+      !dayWorktable.noHorizontalOverflow) {
     throw new Error(`手机首页没有完整呈现紧凑的连续三日人员时间轴：${JSON.stringify(dayWorktable)}`);
   }
   await admin.locator('[data-mobile-day]').nth(1).click();
