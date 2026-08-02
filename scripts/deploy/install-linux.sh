@@ -73,7 +73,10 @@ if [ ! -d "$PACKAGE_DIR/app" ]; then
   exit 1
 fi
 
-for file in server.py business.py service.py index.html vendor/lucide.min.js; do
+for file in \
+  server.py business.py service.py index.html manifest.webmanifest \
+  app-icon.svg app-icon-180.png app-icon-192.png app-icon-512.png \
+  vendor/lucide.min.js; do
   if [ ! -f "$PACKAGE_DIR/app/$file" ]; then
     echo "部署包缺少文件: app/$file" >&2
     exit 1
@@ -118,6 +121,9 @@ trap rollback ERR INT TERM
 
 for file in server.py business.py service.py index.html; do
   sudo install -m 0640 -o root -g dispatch "$PACKAGE_DIR/app/$file" "$TARGET_DIR/app/$file"
+done
+for file in manifest.webmanifest app-icon.svg app-icon-180.png app-icon-192.png app-icon-512.png; do
+  sudo install -m 0644 -o root -g dispatch "$PACKAGE_DIR/app/$file" "$TARGET_DIR/app/$file"
 done
 sudo install -m 0640 -o root -g dispatch \
   "$PACKAGE_DIR/app/vendor/lucide.min.js" "$TARGET_DIR/app/vendor/lucide.min.js"

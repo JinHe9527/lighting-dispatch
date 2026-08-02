@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="团播派工">
+  <rect width="512" height="512" fill="#f28a1a"/>
+  <path d="M169 210c0-48 39-87 87-87s87 39 87 87v21H169v-21Z" fill="#fff"/>
+  <path d="M143 231h226v37c0 13-10 23-23 23H166c-13 0-23-10-23-23v-37Z" fill="#fff"/>
+  <path d="M214 291h84v25c0 23-19 42-42 42s-42-19-42-42v-25Z" fill="#fff"/>
+  <path d="M256 358v43" fill="none" stroke="#fff" stroke-linecap="round" stroke-width="28"/>
+</svg>

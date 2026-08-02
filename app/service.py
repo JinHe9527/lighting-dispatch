@@ -308,7 +308,20 @@ class DispatchService:
             requested_assignee = (body.get("assignee") or "").strip()
             can_choose = business.is_manager(user, grp)
             worker = None
-            if requested_assignee and can_choose:
+            self_order = user["role"] == "staff" and not user.get("lead")
+            if self_order:
+                if requested_assignee and requested_assignee != user["open_id"]:
+                    return 403, "普通工作人员只能给自己下单"
+                worker = conn.execute(
+                    "SELECT * FROM users WHERE open_id=?", (user["open_id"],)
+                ).fetchone()
+                require_now = start <= datetime.now() + timedelta(minutes=15)
+                block = business.assignment_block(
+                    conn, worker, order, require_available_now=require_now
+                )
+                if block:
+                    return 409, block
+            elif requested_assignee and can_choose:
                 worker = conn.execute("SELECT * FROM users WHERE open_id=?", (requested_assignee,)).fetchone()
                 if not worker:
                     return 400, "指派人员不存在"

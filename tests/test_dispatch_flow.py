@@ -37,6 +37,7 @@ class DispatchFlowTests(unittest.TestCase):
         conn.execute("DELETE FROM uploads")
         conn.execute("DELETE FROM orders")
         conn.execute("DELETE FROM notification_outbox")
+        conn.execute("DELETE FROM staff_shift_overrides")
         conn.execute(
             """UPDATE users SET status='free',task='',approved=1,blocked=0,read_only=0,
                       absence_type='',absence_start='',absence_end=''
@@ -57,8 +58,8 @@ class DispatchFlowTests(unittest.TestCase):
             """UPDATE users SET team_id=(SELECT id FROM teams ORDER BY id LIMIT 1)
                WHERE open_id='test:team'"""
         )
-        conn.execute("DELETE FROM sessions WHERE open_id='test:outside'")
-        conn.execute("DELETE FROM users WHERE open_id='test:outside'")
+        conn.execute("DELETE FROM sessions WHERE open_id IN ('test:outside','test:other-group')")
+        conn.execute("DELETE FROM users WHERE open_id IN ('test:outside','test:other-group')")
         conn.commit()
         conn.close()
         self.admin = self.user("test:admin")
@@ -221,6 +222,164 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 409)
         self.assertIn("先改派", message)
 
+    def test_daily_shift_override_controls_assignment_and_can_restore_default(self):
+        work_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        conn = server.db()
+        early_shift = dict(conn.execute("SELECT * FROM shifts WHERE name='早班'").fetchone())
+        conn.close()
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.lead,
+                {
+                    "date": work_date,
+                    "changes": [{
+                        "worker_id": self.staff["open_id"],
+                        "mode": "shift",
+                        "shift_id": early_shift["id"],
+                    }],
+                },
+            ),
+            (200, None),
+        )
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(20, "admin"))[0], 200)
+        order = self.latest_order()
+        code, message = server.SERVICE.assign(
+            self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("超出", message)
+
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.lead,
+                {
+                    "date": work_date,
+                    "changes": [{"worker_id": self.staff["open_id"], "mode": "default"}],
+                },
+            ),
+            (200, None),
+        )
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        schedule = server.api_schedule(
+            self.lead, {"range": "day", "date": work_date}
+        )[1]
+        assignment = next(
+            item for item in schedule["assignments"]
+            if item["worker_id"] == self.staff["open_id"]
+        )
+        self.assertEqual(assignment["source"], "default")
+        self.assertEqual(assignment["name"], "中班")
+
+    def test_daily_off_blocks_assignment_and_existing_work_blocks_schedule_change(self):
+        work_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.lead,
+                {
+                    "date": work_date,
+                    "changes": [{"worker_id": self.staff["open_id"], "mode": "off"}],
+                },
+            ),
+            (200, None),
+        )
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)
+        order = self.latest_order()
+        code, message = server.SERVICE.assign(
+            self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("排休", message)
+
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.lead,
+                {
+                    "date": work_date,
+                    "changes": [{"worker_id": self.staff["open_id"], "mode": "default"}],
+                },
+            ),
+            (200, None),
+        )
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        code, message = server.do_schedule_adjust(
+            self.lead,
+            {
+                "date": work_date,
+                "changes": [{"worker_id": self.staff["open_id"], "mode": "off"}],
+            },
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("先改派", message)
+
+    def test_schedule_adjustment_enforces_manager_scope_and_self_protection(self):
+        work_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        code, message = server.do_schedule_adjust(
+            self.staff,
+            {
+                "date": work_date,
+                "changes": [{"worker_id": self.lead["open_id"], "mode": "off"}],
+            },
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("仅管理员或组长", message)
+        code, message = server.do_schedule_adjust(
+            self.lead,
+            {
+                "date": work_date,
+                "changes": [{"worker_id": self.lead["open_id"], "mode": "off"}],
+            },
+        )
+        self.assertEqual(code, 403)
+        self.assertIn("不能调整自己的排班", message)
+
+    def test_staff_state_only_contains_own_group_shift_overrides(self):
+        work_date = (datetime.now().date() + timedelta(days=1)).isoformat()
+        conn = server.db()
+        conn.execute(
+            """INSERT INTO users(
+                 open_id,name,role,grp,lead,intern,approved,blocked,shift,status,created_at,last_login
+               ) VALUES(?,?,?,?,0,0,1,0,'中班','free',?,?)""",
+            (
+                "test:other-group",
+                "其他组成员",
+                "staff",
+                "设备组",
+                server.now_iso(),
+                server.now_iso(),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(
+            server.do_schedule_adjust(
+                self.admin,
+                {
+                    "date": work_date,
+                    "changes": [{"worker_id": "test:other-group", "mode": "off"}],
+                },
+            ),
+            (200, None),
+        )
+
+        admin_state = server.api_state(self.admin)
+        staff_state = server.api_state(self.staff)
+        self.assertTrue(
+            any(item["worker_id"] == "test:other-group" for item in admin_state["shift_overrides"])
+        )
+        self.assertFalse(
+            any(item["worker_id"] == "test:other-group" for item in staff_state["shift_overrides"])
+        )
+
     def create_running_order(self):
         body = {
             "team_id": self.team_row["id"],
@@ -267,6 +426,20 @@ class DispatchFlowTests(unittest.TestCase):
         code, message = server.SERVICE.order(self.team, self.order_body(17))
         self.assertEqual(code, 409)
         self.assertIn("上限", message)
+
+    def test_staff_order_is_always_assigned_to_self(self):
+        body = self.order_body(15, "staff")
+        self.assertEqual(server.SERVICE.order(self.staff, body), (200, None))
+        order = self.latest_order()
+        self.assertEqual(order["creator_id"], self.staff["open_id"])
+        self.assertEqual(order["assignee_id"], self.staff["open_id"])
+        self.assertEqual(order["status"], "assigned")
+
+        other_body = self.order_body(17, "staff")
+        other_body["assignee"] = self.lead["open_id"]
+        code, message = server.SERVICE.order(self.staff, other_body)
+        self.assertEqual(code, 403)
+        self.assertIn("只能给自己下单", message)
 
     def test_booking_duration_always_uses_task_standard(self):
         conn = server.db()
@@ -1143,6 +1316,25 @@ class DispatchFlowTests(unittest.TestCase):
         exists = conn.execute("SELECT 1 FROM uploads WHERE token='blocked-upload'").fetchone()
         conn.close()
         self.assertIsNone(exists)
+
+    def test_mobile_home_screen_assets_are_complete(self):
+        root = Path(server.ROOT)
+        manifest = json.loads((root / "manifest.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(manifest["start_url"], "/")
+        self.assertEqual(manifest["scope"], "/")
+        self.assertEqual({icon["sizes"] for icon in manifest["icons"]}, {"192x192", "512x512"})
+        for icon in manifest["icons"]:
+            path = root / icon["src"].removeprefix("/")
+            self.assertTrue(path.is_file())
+            self.assertTrue(path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue((root / "app-icon-180.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+
+        page_source = (root / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<link rel="manifest" href="/manifest.webmanifest">', page_source)
+        self.assertIn('<link rel="apple-touch-icon" href="/app-icon-180.png">', page_source)
+        self.assertIn('<meta name="apple-mobile-web-app-capable" content="yes">', page_source)
+        self.assertIn("-webkit-text-size-adjust:100%", page_source)
 
 
 if __name__ == "__main__":

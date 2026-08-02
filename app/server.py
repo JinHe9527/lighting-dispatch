@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0729a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802h"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -1176,6 +1176,38 @@ def alias_map(conn):
             for r in conn.execute("SELECT open_id,name,COALESCE(alias,'') alias FROM users")}
 
 
+def schedule_assignments(conn, workers, from_date, to_date):
+    """展开日期区间内每个人的实际班次，供桌面与移动端共用。"""
+    assignments = []
+    cursor = datetime.strptime(from_date, "%Y-%m-%d")
+    end = datetime.strptime(to_date, "%Y-%m-%d")
+    while cursor <= end:
+        work_date = cursor.strftime("%Y-%m-%d")
+        for worker in workers:
+            shift = business.effective_shift(conn, worker, work_date)
+            if not shift:
+                shift = {
+                    "worker_id": worker["open_id"],
+                    "date": work_date,
+                    "shift_id": None,
+                    "name": "",
+                    "start": "",
+                    "end": "",
+                    "source": "missing",
+                    "is_off": 0,
+                }
+            item = dict(shift)
+            item.update({
+                "worker_name": dn(worker),
+                "grp": worker["grp"] or "",
+                "default_shift": worker["shift"] or "",
+                "absence_type": business.absence_type_on(worker, work_date),
+            })
+            assignments.append(item)
+        cursor += timedelta(days=1)
+    return assignments
+
+
 def api_state(user):
     conn = db()
     amap = alias_map(conn)
@@ -1221,6 +1253,7 @@ def api_state(user):
     for s in staff:
         s["fs_name"] = s["name"]
         s["name"] = dn(s)
+    today_assignments = schedule_assignments(conn, staff, today(), today()) if staff else []
 
     if user["role"] == "team":
         team_id = business.bound_team_id(user)
@@ -1234,6 +1267,30 @@ def api_state(user):
     shifts = [] if user["role"] == "team" else [dict(r) for r in conn.execute(
         "SELECT id,name,start,end FROM shifts ORDER BY sort,id"
     )]
+    try:
+        horizon_days = max(1, min(31, int(settings.get("book_horizon_days", "7"))))
+    except ValueError:
+        horizon_days = 7
+    override_to = (
+        datetime.strptime(today(), "%Y-%m-%d") + timedelta(days=horizon_days)
+    ).strftime("%Y-%m-%d")
+    if user["role"] == "team":
+        shift_overrides = []
+    else:
+        override_sql = """SELECT so.worker_id,so.work_date,so.shift_id,so.is_off,
+                                 s.name,s.start,s.end
+                          FROM staff_shift_overrides so
+                          JOIN users u ON u.open_id=so.worker_id
+                          LEFT JOIN shifts s ON s.id=so.shift_id
+                          WHERE so.work_date>=? AND so.work_date<=?"""
+        override_args = [today(), override_to]
+        if user["role"] == "staff":
+            override_sql += " AND u.grp=?"
+            override_args.append(user.get("grp") or "__none__")
+        shift_overrides = [dict(r) for r in conn.execute(
+            override_sql + " ORDER BY so.work_date,so.worker_id",
+            override_args,
+        )]
 
     order_where = (
         "(date=? OR status IN ('pending','assigned','in_progress','completion_review') "
@@ -1260,7 +1317,8 @@ def api_state(user):
     business.attach_transfer_state(conn, orders)
     business.attach_time_review_state(conn, orders)
 
-    out = {"me": me, "groups": groups, "staff": staff, "teams": teams, "sla": sla,
+    out = {"me": me, "groups": groups, "staff": staff, "today_assignments": today_assignments,
+           "shift_overrides": shift_overrides, "teams": teams, "sla": sla,
            "shifts": shifts, "orders": orders, "test_mode": TEST_MODE,
            "server_version": SERVER_VERSION,
            "bootstrap_open": settings.get("bootstrap_used") != "1",
@@ -1311,17 +1369,25 @@ def api_users(user):
 
 
 def api_schedule(user, params):
-    """本周/本月排班图:返回日期区间内工单(按组过滤,与看板一致)。"""
+    """返回指定日、周或月的有效班次和工单。"""
     rng = (params.get("range") or "week").strip()
     now = biz_now()  # 周/月区间与「今天」都按排班日,凌晨不跳日
+    base_text = (params.get("date") or now.strftime("%Y-%m-%d")).strip()
+    try:
+        base = datetime.strptime(base_text, "%Y-%m-%d")
+    except ValueError:
+        return 400, "排班日期无效"
     if rng == "month":
-        frm = now.replace(day=1)
+        frm = base.replace(day=1)
         nxt = frm.replace(year=frm.year + 1, month=1) if frm.month == 12 \
             else frm.replace(month=frm.month + 1)
         to = nxt - timedelta(days=1)
+    elif rng == "day":
+        frm = base
+        to = base
     else:
         rng = "week"
-        frm = now - timedelta(days=now.weekday())  # 本周一
+        frm = base - timedelta(days=base.weekday())
         to = frm + timedelta(days=6)
     frm_s, to_s = frm.strftime("%Y-%m-%d"), to.strftime("%Y-%m-%d")
     conn = db()
@@ -1343,9 +1409,168 @@ def api_schedule(user, params):
     for r in rows:
         if r.get("assignee_id") and r["assignee_id"] in amap:
             r["assignee_name"] = amap[r["assignee_id"]]
+    workers = []
+    if user["role"] != "team":
+        worker_sql = (
+            "SELECT * FROM users WHERE grp!='' AND role!='team' "
+            "AND COALESCE(approved,0)=1 AND COALESCE(blocked,0)=0"
+        )
+        worker_args = []
+        if user["role"] == "staff":
+            worker_sql += " AND grp=?"
+            worker_args.append(user.get("grp") or "__none__")
+        workers = conn.execute(worker_sql + " ORDER BY grp,name", worker_args).fetchall()
+    assignments = schedule_assignments(conn, workers, frm_s, to_s) if workers else []
     conn.close()
     return 200, {"range": rng, "from": frm_s, "to": to_s,
-                 "today": now.strftime("%Y-%m-%d"), "orders": rows}
+                 "today": now.strftime("%Y-%m-%d"), "orders": rows,
+                 "assignments": assignments}
+
+
+def do_schedule_adjust(user, body):
+    """保存某一天的班次调整；删除记录即恢复人员默认班次。"""
+    if not business.is_manager(user):
+        return 403, "仅管理员或组长可调整排班"
+    work_date = str(body.get("date") or "").strip()
+    try:
+        parsed_date = datetime.strptime(work_date, "%Y-%m-%d").date()
+    except ValueError:
+        return 400, "排班日期无效"
+    if parsed_date < datetime.strptime(today(), "%Y-%m-%d").date():
+        return 400, "不能修改已经过去的排班"
+    changes = body.get("changes")
+    if not isinstance(changes, list) or not changes or len(changes) > 100:
+        return 400, "请提交 1 至 100 条人员排班调整"
+
+    conn = db()
+    conn.execute("BEGIN IMMEDIATE")
+    seen = set()
+    prepared = []
+    for change in changes:
+        if not isinstance(change, dict):
+            conn.close()
+            return 400, "排班调整格式无效"
+        worker_id = str(change.get("worker_id") or "").strip()
+        mode = str(change.get("mode") or "").strip()
+        if not worker_id or worker_id in seen:
+            conn.close()
+            return 400, "人员排班不能重复提交"
+        seen.add(worker_id)
+        worker = conn.execute("SELECT * FROM users WHERE open_id=?", (worker_id,)).fetchone()
+        if (
+            not worker
+            or worker["role"] == "team"
+            or not worker["grp"]
+            or not worker["approved"]
+            or worker["blocked"]
+        ):
+            conn.close()
+            return 400, "排班人员不存在或当前不可排班"
+        if user["role"] != "admin" and (worker["grp"] or "") != (user.get("grp") or ""):
+            conn.close()
+            return 403, "组长只能调整本组人员排班"
+        if worker_id == user["open_id"]:
+            conn.close()
+            return 403, "不能调整自己的排班，请让其他管理员操作"
+        current = conn.execute(
+            "SELECT shift_id,is_off FROM staff_shift_overrides WHERE worker_id=? AND work_date=?",
+            (worker_id, work_date),
+        ).fetchone()
+        shift = None
+        shift_id = None
+        if mode == "default":
+            desired = None
+            shift = conn.execute(
+                "SELECT id,name,start,end FROM shifts WHERE name=?",
+                (worker["shift"] or "",),
+            ).fetchone()
+            if not shift:
+                conn.close()
+                return 409, f"{dn(worker)} 的默认班次不存在"
+        elif mode == "off":
+            desired = (None, 1)
+        elif mode == "shift":
+            shift_id = record_id(change.get("shift_id"))
+            shift = conn.execute(
+                "SELECT id,name,start,end FROM shifts WHERE id=?", (shift_id,)
+            ).fetchone() if shift_id else None
+            if not shift:
+                conn.close()
+                return 400, "指定班次不存在"
+            desired = (shift_id, 0)
+        else:
+            conn.close()
+            return 400, "排班调整方式无效"
+
+        current_value = (current["shift_id"], current["is_off"]) if current else None
+        if current_value == desired:
+            continue
+        orders = conn.execute(
+            """SELECT * FROM orders
+               WHERE assignee_id=? AND date=?
+               AND status IN ('assigned','in_progress','completion_review')""",
+            (worker_id, work_date),
+        ).fetchall()
+        if mode == "off" and orders:
+            conn.close()
+            return 409, f"{dn(worker)} 当天还有 {len(orders)} 张工单，请先改派"
+        for order in orders:
+            order_start, order_end = business.order_bounds(order)
+            shift_start, shift_end = business.shift_bounds(
+                work_date, shift["start"], shift["end"]
+            )
+            if (
+                not order_start
+                or not order_end
+                or not shift_start
+                or not shift_end
+                or order_start < shift_start
+                or order_end > shift_end
+            ):
+                conn.close()
+                return 409, f"{dn(worker)} 的工单 #{order['id']} 超出所选班次，请先改派"
+        prepared.append((worker, mode, shift_id, shift))
+
+    stamp = now_iso()
+    audit_items = []
+    for index, (worker, mode, shift_id, shift) in enumerate(prepared):
+        if mode == "default":
+            conn.execute(
+                "DELETE FROM staff_shift_overrides WHERE worker_id=? AND work_date=?",
+                (worker["open_id"], work_date),
+            )
+            label = f"恢复默认班次（{worker['shift']}）"
+        else:
+            conn.execute(
+                """INSERT INTO staff_shift_overrides(
+                     worker_id,work_date,shift_id,is_off,created_by,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?,?)
+                   ON CONFLICT(worker_id,work_date) DO UPDATE SET
+                     shift_id=excluded.shift_id,is_off=excluded.is_off,
+                     created_by=excluded.created_by,updated_at=excluded.updated_at""",
+                (
+                    worker["open_id"],
+                    work_date,
+                    shift_id,
+                    1 if mode == "off" else 0,
+                    user["open_id"],
+                    stamp,
+                    stamp,
+                ),
+            )
+            label = "排休" if mode == "off" else f"调整为{shift['name']}"
+        audit_items.append(f"{dn(worker)}：{label}")
+        business.queue_notification(
+            conn,
+            worker["open_id"],
+            f"{work_date} 排班已{label}",
+            f"shift:{work_date}:{worker['open_id']}:{stamp}:{index}",
+        )
+    if prepared:
+        insert_audit(conn, user, "调整排班", f"{work_date}；" + "；".join(audit_items))
+    conn.commit()
+    conn.close()
+    return 200, None
 
 
 def api_stats(user, params):
@@ -1615,7 +1840,7 @@ def do_order(user, body):
     if (grp == "灯光组" and "编歌" in task_type and not media and not media2
             and setting("rule_biange_media", "1") == "1"):
         conn.close()
-        return 400, "编歌必须上传歌曲音频或视频（最好都传），灯光师要跟着歌编灯"
+        return 400, "编歌必须上传歌曲音频或视频（最好都传），工作人员需要根据歌曲处理"
     cur = conn.execute("""INSERT INTO orders(date,team,room,task_type,minutes,base_time,arrive,grp,
                     status,creator_id,creator_name,note,media,media_kind,media2,media2_kind,created_at,urgent,booked)
                     VALUES(?,?,?,?,?,?,?,?,'wait',?,?,?,?,?,?,?,?,?,?)""",
@@ -2235,9 +2460,16 @@ def do_save(user, body):
                 next_start = fields.get("start", current["start"])
                 next_end = fields.get("end", current["end"])
                 active_orders = conn.execute(
-                    """SELECT o.* FROM orders o JOIN users u ON u.open_id=o.assignee_id
-                       WHERE u.shift=? AND o.status IN ('assigned','in_progress','completion_review')""",
-                    (current["name"],),
+                    """SELECT o.* FROM orders o
+                       JOIN users u ON u.open_id=o.assignee_id
+                       LEFT JOIN staff_shift_overrides so
+                         ON so.worker_id=u.open_id AND so.work_date=o.date
+                       WHERE o.status IN ('assigned','in_progress','completion_review')
+                       AND (
+                         (so.worker_id IS NULL AND u.shift=?)
+                         OR (so.is_off=0 AND so.shift_id=?)
+                       )""",
+                    (current["name"], current["id"]),
                 ).fetchall()
                 for active_order in active_orders:
                     order_start, order_end = business.order_bounds(active_order)
@@ -2357,9 +2589,12 @@ def do_remove(user, body):
         shift = conn.execute("SELECT name FROM shifts WHERE id=?", (rid,)).fetchone()
         if shift:
             count = conn.execute("SELECT COUNT(*) count FROM users WHERE shift=?", (shift["name"],)).fetchone()["count"]
-            if count:
+            override_count = conn.execute(
+                "SELECT COUNT(*) count FROM staff_shift_overrides WHERE shift_id=?", (rid,)
+            ).fetchone()["count"]
+            if count or override_count:
                 conn.close()
-                return 409, f"该班次仍被 {count} 名人员使用，请先调整人员班次"
+                return 409, f"该班次仍被 {count} 名人员默认使用 / {override_count} 条按天排班使用，请先调整"
     if entity == "teams":
         bound = conn.execute("SELECT COUNT(*) count FROM users WHERE team_id=?", (rid,)).fetchone()["count"]
         active = conn.execute(
@@ -2817,8 +3052,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, (ROOT / "index.html").read_bytes(), "text/html")
             if path == "/vendor/lucide.min.js":
                 return self._send(200, (ROOT / "vendor" / "lucide.min.js").read_bytes(), "text/javascript")
+            if path == "/manifest.webmanifest":
+                return self._send(
+                    200,
+                    (ROOT / "manifest.webmanifest").read_bytes(),
+                    "application/manifest+json",
+                )
+            if path == "/app-icon.svg":
+                return self._send(200, (ROOT / "app-icon.svg").read_bytes(), "image/svg+xml")
+            if path in ("/app-icon-180.png", "/app-icon-192.png", "/app-icon-512.png"):
+                return self._send(200, (ROOT / path.removeprefix("/")).read_bytes(), "image/png")
             if path == "/favicon.ico":
-                return self._send(204, b"", "image/x-icon")
+                return self._send(200, (ROOT / "app-icon-192.png").read_bytes(), "image/png")
             if path == "/api/health":
                 try:
                     conn = db()
@@ -3047,6 +3292,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/api/complete": SERVICE.complete,
                 "/api/completion-dispute": SERVICE.dispute_completion,
                 "/api/time-review-resolve": SERVICE.resolve_time_review,
+                "/api/schedule-adjust": do_schedule_adjust,
                 "/api/save": do_save,
                 "/api/remove": do_remove,
                 "/api/setting": do_set_setting,

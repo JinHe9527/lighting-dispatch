@@ -153,6 +153,22 @@ def migrate(conn):
           value TEXT NOT NULL,
           updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS staff_shift_overrides(
+          worker_id TEXT NOT NULL,
+          work_date TEXT NOT NULL,
+          shift_id INTEGER,
+          is_off INTEGER NOT NULL DEFAULT 0 CHECK(is_off IN (0,1)),
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(worker_id,work_date),
+          FOREIGN KEY(worker_id) REFERENCES users(open_id),
+          FOREIGN KEY(shift_id) REFERENCES shifts(id),
+          CHECK(
+            (is_off=1 AND shift_id IS NULL)
+            OR (is_off=0 AND shift_id IS NOT NULL)
+          )
+        );
         CREATE INDEX IF NOT EXISTS idx_order_events_order ON order_events(order_id,id);
         CREATE INDEX IF NOT EXISTS idx_transfers_order_status ON transfers(order_id,status);
         CREATE INDEX IF NOT EXISTS idx_uploads_owner_status ON uploads(owner_id,status);
@@ -160,6 +176,8 @@ def migrate(conn):
         CREATE INDEX IF NOT EXISTS idx_time_reviews_order ON time_reviews(order_id,id);
         CREATE INDEX IF NOT EXISTS idx_time_reviews_status ON time_reviews(status,kind,id);
         CREATE INDEX IF NOT EXISTS idx_outbox_status_time ON notification_outbox(status,available_at,id);
+        CREATE INDEX IF NOT EXISTS idx_staff_shift_overrides_date
+          ON staff_shift_overrides(work_date,worker_id);
         """
     )
     ensure_columns(
@@ -236,7 +254,7 @@ def migrate(conn):
 
     stamp = now_iso()
     conn.execute(
-        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','5',?)",
+        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','6',?)",
         (stamp,),
     )
 
@@ -355,6 +373,57 @@ def absence_type_on(user, order_date):
     return ""
 
 
+def effective_shift(conn, worker, work_date):
+    """返回人员某天的实际班次；没有按天调整时使用默认班次。"""
+    override = conn.execute(
+        """SELECT o.shift_id,o.is_off,s.name,s.start,s.end
+           FROM staff_shift_overrides o
+           LEFT JOIN shifts s ON s.id=o.shift_id
+           WHERE o.worker_id=? AND o.work_date=?""",
+        (worker["open_id"], work_date),
+    ).fetchone()
+    if override:
+        if override["is_off"]:
+            return {
+                "worker_id": worker["open_id"],
+                "date": work_date,
+                "shift_id": None,
+                "name": "",
+                "start": "",
+                "end": "",
+                "source": "off",
+                "is_off": 1,
+            }
+        if not override["name"]:
+            return None
+        return {
+            "worker_id": worker["open_id"],
+            "date": work_date,
+            "shift_id": override["shift_id"],
+            "name": override["name"],
+            "start": override["start"],
+            "end": override["end"],
+            "source": "override",
+            "is_off": 0,
+        }
+    shift = conn.execute(
+        "SELECT id,name,start,end FROM shifts WHERE name=?",
+        (worker["shift"] or "",),
+    ).fetchone()
+    if not shift:
+        return None
+    return {
+        "worker_id": worker["open_id"],
+        "date": work_date,
+        "shift_id": shift["id"],
+        "name": shift["name"],
+        "start": shift["start"],
+        "end": shift["end"],
+        "source": "default",
+        "is_off": 0,
+    }
+
+
 def add_event(conn, order_id, event_type, user, from_status="", to_status="", detail=""):
     conn.execute(
         """INSERT INTO order_events(
@@ -399,9 +468,11 @@ def assignment_block(conn, worker, order, ignore_order_id=None, require_availabl
     if absence_type:
         return f"{display_name(worker)} 当天{ABSENCE_LABELS[absence_type]}"
 
-    shift = conn.execute("SELECT start,end FROM shifts WHERE name=?", (worker["shift"] or "",)).fetchone()
+    shift = effective_shift(conn, worker, order["date"])
     if not shift:
         return f"{display_name(worker)} 的班次配置不存在"
+    if shift["is_off"]:
+        return f"{display_name(worker)} 当天排休"
     start, end = order_bounds(order)
     try:
         shift_start, shift_end = shift_bounds(order["date"], shift["start"], shift["end"])
