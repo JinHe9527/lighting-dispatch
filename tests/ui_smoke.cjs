@@ -455,13 +455,41 @@ async function auditMobileAccount(page, profile) {
   await admin.locator(".metric-row").waitFor();
   await traverseRole(admin, "admin");
   await admin.locator('[data-page="crew"]').first().click();
-  await admin.getByText("人员与默认班次", { exact: true }).waitFor();
-  if (await admin.getByText("下单账号绑定", { exact: true }).count()) throw new Error("人员与默认班次仍混入账号绑定内容");
+  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
+  if (await admin.getByRole("heading", { name: "账号与使用身份", exact: true }).count()) throw new Error("工作人员页面仍混入账号设置内容");
   await admin.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await admin.locator('[data-crew-section="roster"]').focus();
   await admin.keyboard.press("ArrowRight");
-  await admin.getByText("下单账号绑定", { exact: true }).waitFor();
-  await admin.getByText("账号准入与管理层权限", { exact: true }).waitFor();
+  await admin.getByRole("heading", { name: "账号与使用身份", exact: true }).waitFor();
+  const accountLayout = await admin.evaluate(() => {
+    const rows=[...document.querySelectorAll('.access-list .access-row')];
+    return {
+      metrics: document.querySelectorAll('.account-summary .account-metric').length,
+      rows: rows.length,
+      semanticButtons: rows.every(row=>row.tagName==='BUTTON'),
+      compactRows: rows.every(row=>row.getBoundingClientRect().height<=72),
+      legacyActions: document.querySelectorAll('[data-access-action],[data-manager-level],[data-team-binding]').length,
+      duplicateBindingPanel: [...document.querySelectorAll('h2')].filter(heading=>heading.textContent.trim()==='下单账号绑定').length,
+    };
+  });
+  if (accountLayout.metrics !== 4 || accountLayout.rows < 4 || !accountLayout.semanticButtons || !accountLayout.compactRows || accountLayout.legacyActions || accountLayout.duplicateBindingPanel) {
+    throw new Error(`账号页面仍有重复入口或巨型操作卡片：${JSON.stringify(accountLayout)}`);
+  }
+  const originalTeamId = await admin.evaluate(() => Number(state.users.find(user=>user.open_id==='test:team')?.team_id||0));
+  if (!originalTeamId) throw new Error("团队测试账号缺少初始绑定");
+  await admin.locator('[data-account-config="test:team"]').click();
+  await admin.locator('#accountType').selectOption('staff');
+  if (!await admin.locator('[data-account-field="group"]').isVisible() || await admin.locator('[data-account-field="team"]').isVisible()) throw new Error("工作人员身份没有显示所属分组设置");
+  await admin.locator('#accountGroup').selectOption('灯光组');
+  await admin.locator('#accountSave').click();
+  await admin.waitForFunction(() => state.users.find(user=>user.open_id==='test:team')?.role==='staff');
+  await admin.locator('[data-account-config="test:team"]').click();
+  await admin.locator('#accountType').selectOption('team');
+  if (!await admin.locator('[data-account-field="team"]').isVisible() || await admin.locator('[data-account-field="group"]').isVisible()) throw new Error("团队下单方没有显示直播团队绑定");
+  await admin.locator('#accountTeam').selectOption(String(originalTeamId));
+  await admin.locator('#accountSave').click();
+  await admin.waitForFunction(teamId => { const user=state.users.find(item=>item.open_id==='test:team');return user?.role==='team'&&Number(user.team_id)===teamId }, originalTeamId);
+  await admin.locator('[data-crew-section="accounts"]').focus();
   const peopleTabSemantics = await admin.evaluate(() => {
     const selected = document.querySelector(".people-mode [aria-selected='true']");
     const panel = document.getElementById("crewPanel");
@@ -478,10 +506,34 @@ async function auditMobileAccount(page, profile) {
       peopleTabSemantics.panelRole !== "tabpanel") {
     throw new Error(`人员页分段键盘或 VoiceOver 语义异常：${JSON.stringify(peopleTabSemantics)}`);
   }
+  await admin.setViewportSize({ width: 390, height: 844 });
+  const mobileAccountLayout = await admin.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth-document.documentElement.clientWidth,
+    columns: getComputedStyle(document.querySelector('.account-summary')).gridTemplateColumns.split(' ').length,
+    rowHeights: [...document.querySelectorAll('.access-row')].map(row=>Math.round(row.getBoundingClientRect().height)),
+    rowButtons: [...document.querySelectorAll('.access-row')].every(row=>row.tagName==='BUTTON'),
+  }));
+  if (mobileAccountLayout.overflow > 2 || mobileAccountLayout.columns !== 2 || mobileAccountLayout.rowHeights.some(height=>height>96) || !mobileAccountLayout.rowButtons) {
+    throw new Error(`手机账号列表仍然浪费空间或发生错位：${JSON.stringify(mobileAccountLayout)}`);
+  }
+  await admin.locator('[data-account-config="test:team"]').click();
+  await admin.locator('.account-editor').waitFor();
+  await admin.waitForTimeout(220);
+  const mobileAccountEditor = await admin.evaluate(() => {
+    const editor=document.querySelector('.account-editor'),mask=editor?.parentElement,rect=editor?.getBoundingClientRect(),nav=document.querySelector('.mobile-nav');
+    return {top:rect?.top,bottom:rect?.bottom,height:rect?.height,viewport:innerHeight,background:getComputedStyle(editor).backgroundColor,maskZ:Number(getComputedStyle(mask).zIndex),navZ:Number(getComputedStyle(nav).zIndex),teamVisible:!document.querySelector('[data-account-field="team"]').hidden,groupVisible:!document.querySelector('[data-account-field="group"]').hidden,saveHeight:document.querySelector('#accountSave')?.getBoundingClientRect().height};
+  });
+  if (mobileAccountEditor.top < 0 || mobileAccountEditor.bottom > mobileAccountEditor.viewport+1 || mobileAccountEditor.height > mobileAccountEditor.viewport || mobileAccountEditor.background === 'rgba(0, 0, 0, 0)' || mobileAccountEditor.maskZ <= mobileAccountEditor.navZ || !mobileAccountEditor.teamVisible || mobileAccountEditor.groupVisible || mobileAccountEditor.saveHeight < 44) {
+    throw new Error(`手机账号设置面板不可用：${JSON.stringify(mobileAccountEditor)}`);
+  }
+  await admin.locator('.account-editor [data-close]').first().click();
+  await auditMobileLayout(admin, "admin/mobile/accounts");
+  await admin.setViewportSize({ width: 1440, height: 1000 });
   await admin.waitForFunction(() => new URL(location.href).searchParams.get("section") === "accounts");
   if (await admin.getByText("人员能力矩阵", { exact: true }).count()) throw new Error("人员能力矩阵仍然显示");
+  await admin.locator('[data-crew-section="accounts"]').focus();
   await admin.keyboard.press("ArrowLeft");
-  await admin.getByText("人员与默认班次", { exact: true }).waitFor();
+  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
   const today = await admin.evaluate(() => todayStr());
   await admin.locator('[data-leave="test:staff"]').click();
   await admin.locator("#absenceSave").click();
@@ -566,12 +618,12 @@ async function auditMobileAccount(page, profile) {
   await admin.waitForFunction(() => document.querySelector('[data-range="7d"]')?.classList.contains("active"));
   if (new URL(admin.url()).searchParams.get("range") !== "7d") throw new Error("刷新后统计范围深链丢失");
   await admin.locator('.side [data-page="crew"]').click();
-  await admin.getByText("人员与默认班次", { exact: true }).waitFor();
+  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
   await admin.locator('.side [data-page="stats"]').click();
   await admin.getByText("每日接单趋势", { exact: true }).waitFor();
   await admin.evaluate(() => history.back());
   await admin.waitForFunction(() => new URL(location.href).searchParams.get("page") === "crew");
-  await admin.getByText("人员与默认班次", { exact: true }).waitFor();
+  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
   await admin.waitForFunction(() => document.activeElement === document.getElementById("mainContent"));
   await admin.evaluate(() => history.forward());
   await admin.waitForFunction(() => new URL(location.href).searchParams.get("page") === "stats");
@@ -1135,7 +1187,7 @@ async function auditMobileAccount(page, profile) {
     throw new Error(`工单渐进渲染没有只用于超大列表：${JSON.stringify(denseOrderRendering)}`);
   }
   await admin.locator('.mobile-nav [data-page="crew"]').click();
-  await admin.getByText("人员与默认班次", { exact: true }).waitFor();
+  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
   await admin.evaluate(() => {
     const extras = Array.from({ length: 14 }, (_, index) => ({
       open_id: `dense:staff:${index}`,
@@ -1718,8 +1770,11 @@ async function auditMobileAccount(page, profile) {
 
   await admin.locator('.side [data-page="crew"]').click();
   await admin.locator('[data-crew-section="accounts"]').click();
-  await admin.locator('[data-manager-level="readonly"][data-account="test:team"]').click();
-  await admin.getByText("已设为管理层只读，可查看全部管理端内容", { exact: true }).waitFor();
+  await admin.locator('[data-account-config="test:team"]').click();
+  await admin.locator('#accountType').selectOption('readonly');
+  await admin.locator('#accountAccess').selectOption('approved');
+  await admin.locator('#accountSave').click();
+  await admin.getByText("账号设置已保存", { exact: true }).waitFor();
 
   const managerContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const manager = await managerContext.newPage();

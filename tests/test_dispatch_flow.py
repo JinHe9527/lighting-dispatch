@@ -40,7 +40,7 @@ class DispatchFlowTests(unittest.TestCase):
         conn.execute("DELETE FROM staff_shift_overrides")
         conn.execute(
             """UPDATE users SET status='free',task='',approved=1,blocked=0,read_only=0,
-                      absence_type='',absence_start='',absence_end=''
+                      absence_type='',absence_start='',absence_end='',team_id=NULL
                WHERE open_id LIKE 'test:%'"""
         )
         for profile in server.TEST_PROFILES.values():
@@ -112,10 +112,23 @@ class DispatchFlowTests(unittest.TestCase):
 
         self.assertIsNone(server.apply_login_gate(outside["open_id"], outside["name"]))
         self.assertFalse(server.Handler._approved(outside))
+        code, message = server.do_save(
+            self.admin,
+            {"entity": "users", "record": {"open_id": outside["open_id"], "approved": "1"}},
+        )
+        self.assertEqual(code, 400)
+        self.assertIn("绑定直播团队", message)
         self.assertEqual(
             server.do_save(
                 self.admin,
-                {"entity": "users", "record": {"open_id": outside["open_id"], "approved": "1"}},
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": outside["open_id"],
+                        "approved": "1",
+                        "team_id": self.team_row["id"],
+                    },
+                },
             ),
             (200, None),
         )
@@ -132,6 +145,56 @@ class DispatchFlowTests(unittest.TestCase):
         blocked = self.user(outside["open_id"])
         self.assertFalse(server.Handler._approved(blocked))
         self.assertIn("未获准使用", server.apply_login_gate(blocked["open_id"], blocked["name"]))
+
+    def test_account_usage_identity_and_scope_are_saved_atomically(self):
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.staff["open_id"],
+                        "role": "team",
+                        "team_id": self.team_row["id"],
+                        "approved": "1",
+                        "blocked": "0",
+                    },
+                },
+            ),
+            (200, None),
+        )
+        team_account = self.user(self.staff["open_id"])
+        self.assertEqual(team_account["role"], "team")
+        self.assertEqual(team_account["team_id"], self.team_row["id"])
+        self.assertEqual(team_account["grp"], "")
+        self.assertEqual(team_account["lead"], 0)
+        self.assertEqual(team_account["intern"], 0)
+        self.assertEqual(team_account["read_only"], 0)
+        self.assertEqual(team_account["status"], "off")
+
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {
+                    "entity": "users",
+                    "record": {
+                        "open_id": self.staff["open_id"],
+                        "role": "staff",
+                        "grp": "灯光组",
+                        "lead": "1",
+                        "intern": "0",
+                        "approved": "1",
+                    },
+                },
+            ),
+            (200, None),
+        )
+        lead_account = self.user(self.staff["open_id"])
+        self.assertEqual(lead_account["role"], "staff")
+        self.assertIsNone(lead_account["team_id"])
+        self.assertEqual(lead_account["grp"], "灯光组")
+        self.assertEqual(lead_account["lead"], 1)
+        self.assertEqual(lead_account["read_only"], 0)
 
     def test_management_read_only_sees_admin_state_without_write_permission(self):
         self.assertEqual(

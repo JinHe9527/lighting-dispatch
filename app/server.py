@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802w"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802x"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -2450,6 +2450,18 @@ def do_save(user, body):
                 conn.close()
                 return 400, "绑定团队不存在"
             fields["team_id"] = team_id
+        final_role = fields.get("role", target_user["role"])
+        final_team_id = fields.get("team_id", target_user["team_id"])
+        final_group = fields.get("grp", target_user["grp"])
+        final_approved = fields.get("approved", target_user["approved"])
+        final_blocked = fields.get("blocked", target_user["blocked"])
+        if final_approved and not final_blocked:
+            if final_role == "team" and not final_team_id:
+                conn.close()
+                return 400, "团队下单账号必须先绑定直播团队"
+            if final_role == "staff" and not final_group:
+                conn.close()
+                return 400, "工作人员账号必须先选择所属分组"
         absence_fields = {"absence_type", "absence_start", "absence_end"}
         if absence_fields & set(fields):
             absence_type = str(fields.get("absence_type", target_user["absence_type"]) or "").strip()
@@ -2510,7 +2522,7 @@ def do_save(user, body):
             conn.close()
             return 409, "该人员有正在执行或即将开始的工单，只能保持忙碌状态"
         invalidates_assignment = (
-            fields.get("role") == "team"
+            fields.get("role") in ("team", "admin")
             or ("grp" in fields and fields["grp"] != (target_user["grp"] or ""))
             or ("shift" in fields and fields["shift"] != (target_user["shift"] or ""))
             or fields.get("intern") == 1
@@ -2545,8 +2557,18 @@ def do_save(user, body):
             fields["task"] = ""
             fields["grp"] = ""
             fields["lead"] = 0
-        elif fields.get("role") in ("staff", "admin"):
+            fields["intern"] = 0
+            fields["read_only"] = 0
+        elif fields.get("role") == "admin":
             fields["team_id"] = None
+            fields["status"] = "off"
+            fields["task"] = ""
+            fields["grp"] = ""
+            fields["lead"] = 0
+            fields["intern"] = 0
+        elif fields.get("role") == "staff":
+            fields["team_id"] = None
+            fields["read_only"] = 0
         sets = ",".join(f"{k}=?" for k in fields)
         conn.execute(f"UPDATE users SET {sets} WHERE open_id=?", (*fields.values(), oid))
         if fields.get("blocked") == 1 or fields.get("approved") == 0:
