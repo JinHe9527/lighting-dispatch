@@ -557,6 +557,8 @@ textarea::placeholder{color:var(--dim)}
 .order-extra:hover{background:var(--fill-2)}
 .order-extra:active{opacity:.6}
 .order-extra .icon-sm{color:var(--muted)}
+.order-extra-marks{display:inline-flex;align-items:center;gap:4px}
+.order-extra-arrow{display:grid;place-items:center}
 .prog{display:inline-flex!important;align-items:center;gap:4px;font:600 11px/1 var(--mono);white-space:nowrap;padding:3px 8px;border-radius:999px;margin-top:4px!important;vertical-align:middle}
 .prog .tmr{font-variant-numeric:tabular-nums;letter-spacing:.3px}
 .prog.live{color:var(--accent)!important;background:color-mix(in srgb,var(--accent) 13%,transparent)}
@@ -1106,8 +1108,10 @@ button.dp:hover{border-color:var(--line)}
   .ws-dispatch .dispatch-order-main span{font-size:11px}
   .ws-dispatch .dispatch-order-owner{font-size:11px}
   .ws-dispatch .dispatch-order-status .tag{font-size:10px;padding:3px 6px}
-  .ws-dispatch .dispatch-order-open .order-extra{width:44px;height:44px;padding:0}
-  .ws-dispatch .dispatch-order-open .order-extra span{display:none}
+  .ws-dispatch .dispatch-order-open .order-extra{width:44px;height:44px;padding:0;justify-content:center;gap:0;border-radius:10px;background:transparent;color:var(--dim)}
+  .ws-dispatch .dispatch-order-open .order-extra:hover{background:var(--fill);color:var(--text)}
+  .ws-dispatch .dispatch-order-open .order-extra-label,.ws-dispatch .dispatch-order-open .order-extra-marks{display:none}
+  .ws-dispatch .dispatch-order-open .order-extra-arrow .icon-sm{width:18px;height:18px}
   .ws-dispatch .order-time span{margin:0;font-size:8px}
   .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
   .dash::-webkit-scrollbar{display:none}
@@ -1323,7 +1327,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802v";
+const APP_VERSION="v0802w";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2067,7 +2071,7 @@ function hhmm(ts){const t=tsToMs(ts);return isNaN(t)?"--:--":new Date(t).toTimeS
 function minsBetween(a,b){const x=tsToMs(a),y=tsToMs(b);if(isNaN(x)||isNaN(y))return null;const d=(y-x)/60000;return d>=0?d:null}
 function legTxt(m){return m==null?"":m<60?`${Math.round(m)} 分钟`:`${Math.floor(m/60)} 小时 ${Math.round(m%60)} 分`}
 function orderTimelineHtml(o){const st=[["下单",o.created_at,"send"],["接单",o.accepted_at,"hand"],["开始",o.started_at,"play"],["完成",o.done_at,"check"]];const resp=minsBetween(o.created_at,o.accepted_at),work=minsBetween(o.started_at,o.done_at),total=minsBetween(o.created_at,o.done_at);return `<div class="tl-steps">${st.map(([label,ts])=>{const ok=!isNaN(tsToMs(ts));return `<div class="tl-step ${ok?"done":""}"><span class="tl-node"></span><div class="tl-txt"><strong>${label}</strong><span class="mono">${ok?hhmm(ts):"—"}</span></div></div>`}).join("")}</div><dl class="mini-dl">${resp!=null?`<dt>响应（下单→接单）</dt><dd>${legTxt(resp)}</dd>`:""}${work!=null?`<dt>作业（开始→完成）</dt><dd>${legTxt(work)}</dd>`:""}${total!=null?`<dt>总时长（下单→完成）</dt><dd>${legTxt(total)}</dd>`:""}</dl>`}
-function orderExtra(order){const kind=order.media_kind||"audio";const marks=(order.note?icon("message-square-text",true):"")+(order.media?icon(kind==="video"?"video":"volume-2",true):"")+(order.media2?icon(order.media2_kind==="video"?"video":"volume-2",true):"");return `<button class="order-extra" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(kind)}" data-team="${esc(order.team)}" aria-label="查看${esc(order.team)}工单详情">${marks}${icon("chevron-right",true)}<span>详情</span></button>`}
+function orderExtra(order){const kind=order.media_kind||"audio";const marks=(order.note?icon("message-square-text",true):"")+(order.media?icon(kind==="video"?"video":"volume-2",true):"")+(order.media2?icon(order.media2_kind==="video"?"video":"volume-2",true):"");return `<button class="order-extra" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(kind)}" data-team="${esc(order.team)}" aria-label="查看${esc(order.team)}工单详情">${marks?`<span class="order-extra-marks" aria-hidden="true">${marks}</span>`:""}<span class="order-extra-label">详情</span><span class="order-extra-arrow" aria-hidden="true">${icon("chevron-right",true)}</span></button>`}
 async function cancelOrder(oid,after){const reason=await promptBox("取消原因（必填）","例如：直播时间调整 / 重复下单 / 需求撤回");if(reason===null)return;try{await apiPost("cancel-order",{order_id:Number(oid),reason});showToast("工单已取消并保留记录");if(after)after();load()}catch(e){}}
 function transferOrder(oid){const order=(state.orders||[]).find(item=>item.id===Number(oid));if(!order)return;const node=document.createElement("div");node.className="modal-mask";const reasons=["临时生病","家庭急事","交通受阻","设备故障","排班临时冲突","能力不匹配","派单错误","其他紧急情况"];const candidates=staffForGroup(order.grp).filter(person=>person.open_id!==me.open_id&&canAssign(person,order.date||todayStr(),order.arrive,order));node.innerHTML=`<div class="modal"><div class="modal-head"><strong>申请转包 · ${esc(order.team)}</strong><button class="icon-btn" data-close aria-label="关闭">${icon("x")}</button></div><p class="modal-note">新负责人接受前，你仍然负责这张工单。近 30 天第一次普通转包可直接开放；第二次及以后、开始前 2 小时内、任务进行中或同单再次交接均需组长审批。</p><div class="form-grid"><label>原因<select id="transferReason">${reasons.map(reason=>`<option>${esc(reason)}</option>`).join("")}</select></label><label>邀请对象<select id="transferTarget"><option value="">开放给所有符合条件的本组成员</option>${candidates.map(person=>`<option value="${esc(person.open_id)}">${esc(person.name)} · ${esc(person.shift||"未排班")}</option>`).join("")}</select></label><label class="span-2">补充说明<textarea id="transferDetail" rows="3" placeholder="其他紧急情况必须填写，其他原因建议说明具体情况"></textarea></label></div><div class="dm-foot"><button class="primary" id="transferSubmit">${icon("repeat-2")}提交转包申请</button></div></div>`;const close=()=>removeDialog(node);node.onclick=event=>{if(event.target===node||event.target.closest("[data-close]"))close()};document.body.appendChild(node);drawIcons();bindDialog(node,close,"#transferReason");
 node.querySelector("#transferSubmit").onclick=async event=>{

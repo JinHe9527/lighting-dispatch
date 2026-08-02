@@ -1058,11 +1058,12 @@ async function auditMobileAccount(page, profile) {
       oneLine: rows.every(row => { const boxes=[...row.children].map(child=>child.getBoundingClientRect());const centers=boxes.map(box=>box.top+box.height/2);return Math.max(...centers)-Math.min(...centers)<=2 }),
       roomChips: document.querySelectorAll(".dispatch-panel .dispatch-room").length,
       distinctRoomColors: timelineTaskColor({room:"2号"}) !== timelineTaskColor({room:"8号"}),
+      compactDetailButtons: rows.every(row => { const button=row.querySelector('.order-extra'),style=button&&getComputedStyle(button),arrow=button?.querySelector('.order-extra-arrow'),label=button?.querySelector('.order-extra-label'),marks=button?.querySelector('.order-extra-marks');return Boolean(button&&Math.round(button.getBoundingClientRect().width)===44&&Math.round(button.getBoundingClientRect().height)===44&&style.backgroundColor==='rgba(0, 0, 0, 0)'&&parseFloat(style.borderRadius)<=10&&arrow&&getComputedStyle(arrow).display!=='none'&&label&&getComputedStyle(label).display==='none'&&(!marks||getComputedStyle(marks).display==='none')) }),
     };
   });
   if (dispatchLayout.topbarHeight > 2 || !dispatchLayout.actionsSameRow || !dispatchLayout.panelHeadHidden ||
       dispatchLayout.directPickers || dispatchLayout.legacyAssignSelects || dispatchLayout.rowHeights.some(height => height > 62) ||
-      !dispatchLayout.oneLine || dispatchLayout.roomChips < 1 || !dispatchLayout.distinctRoomColors) {
+      !dispatchLayout.oneLine || dispatchLayout.roomChips < 1 || !dispatchLayout.distinctRoomColors || !dispatchLayout.compactDetailButtons) {
     throw new Error(`手机调度页仍然存在重复指派区或空间浪费：${JSON.stringify(dispatchLayout)}`);
   }
   const directAssignment = await admin.evaluate(() => {
