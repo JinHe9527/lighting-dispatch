@@ -728,14 +728,16 @@ async function auditMobileAccount(page, profile) {
       nowLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-label')?.textContent,
       taskLabel: label?.textContent,
       shortTask: Boolean(job?.classList.contains('short')),
-      shortLabelHidden: Boolean(label&&getComputedStyle(label).display==='none'),
+      shortLabelVisible: Boolean(label&&getComputedStyle(label).display!=='none'),
+      shortLabelIsNumber: Boolean(label&&/^\d+$/.test(label.textContent||'')),
+      shortLabelNotClipped: Boolean(job&&label&&label.getBoundingClientRect().width>=job.getBoundingClientRect().width&&getComputedStyle(job).overflow==='visible'),
       exactTaskWidth: Boolean(job&&Math.abs(job.getBoundingClientRect().width-expectedWidth)<=1),
       legacyTaskDecorations: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-range,[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
     }
   });
   if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
       tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers || tomorrowJump.nowLabel ||
-      !tomorrowJump.taskLabel || !tomorrowJump.shortTask || !tomorrowJump.shortLabelHidden || !tomorrowJump.exactTaskWidth || tomorrowJump.legacyTaskDecorations) {
+      !tomorrowJump.taskLabel || !tomorrowJump.shortTask || !tomorrowJump.shortLabelVisible || !tomorrowJump.shortLabelIsNumber || !tomorrowJump.shortLabelNotClipped || !tomorrowJump.exactTaskWidth || tomorrowJump.legacyTaskDecorations) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
   }
   const taskPointer = admin.locator('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job').first();
