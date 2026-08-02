@@ -817,6 +817,12 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertIn("审核中", message)
 
     def test_edit_cannot_bypass_booking_cap_or_biange_attachment_rule(self):
+        song_body = self.order_body(12)
+        song_body.update({"task": "编新歌（1首）", "custom_task": "1", "minutes": 60})
+        code, message = server.SERVICE.order(self.team, song_body)
+        self.assertEqual(code, 400)
+        self.assertIn("必须上传", message)
+
         self.assertEqual(server.SERVICE.order(self.team, self.order_body(14)), (200, None))
         first = self.latest_order()
         self.assertEqual(server.SERVICE.order(self.team, self.order_body(18)), (200, None))

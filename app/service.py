@@ -8,6 +8,11 @@ except ImportError:
     import business
 
 
+def is_song_programming_task(task_type):
+    text = str(task_type or "")
+    return "编歌" in text or "编新歌" in text
+
+
 class DispatchService:
     def __init__(self, db_factory, setting, today, base_url):
         self.db = db_factory
@@ -280,9 +285,9 @@ class DispatchService:
                 return 400, "设备组下单必须填写问题描述"
             tokens = body.get("upload_tokens") or []
             has_upload = bool(tokens if isinstance(tokens, list) else str(tokens).strip())
-            if grp == "灯光组" and "编歌" in task_type and not has_upload \
+            if grp == "灯光组" and is_song_programming_task(task_type) and not has_upload \
                     and self.setting("rule_biange_media", "1") == "1":
-                return 400, "编歌必须上传歌曲音频或视频"
+                return 400, "编歌/编新歌任务必须上传歌曲音频或视频"
 
             duration_review = "pending" if minutes > 240 and not business.is_manager(user, grp) else "approved"
             cursor = conn.execute(
@@ -1149,12 +1154,12 @@ class DispatchService:
                 return 400, "自定义任务请用 2–80 个字明确说明需要做什么"
             if (
                 order["grp"] == "灯光组"
-                and "编歌" in task_type
+                and is_song_programming_task(task_type)
                 and not order["media"]
                 and not order["media2"]
                 and self.setting("rule_biange_media", "1") == "1"
             ):
-                return 400, "编歌必须上传歌曲音频或视频"
+                return 400, "编歌/编新歌任务必须上传歌曲音频或视频"
             arrive = order["arrive"]
             base_time = order["base_time"]
             if not order["booked"] and base_time and base_time != order["arrive"]:

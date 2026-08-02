@@ -1136,6 +1136,14 @@ async function auditMobileAccount(page, profile) {
   if (new URL(admin.url()).searchParams.get("section") !== "规则库") throw new Error("手机配置分类未写入 URL");
   await admin.reload({ waitUntil: "networkidle" });
   if (await admin.locator("#settingsSectionSelect").inputValue() !== "规则库") throw new Error("刷新后手机配置分类丢失");
+  const songTaskRule = await admin.evaluate(() => ({
+    oldName: isSongProgrammingTask("编歌"),
+    configuredName: isSongProgrammingTask("编新歌（1首）"),
+    unrelated: isSongProgrammingTask("微调灯光"),
+  }));
+  if (!songTaskRule.oldName || !songTaskRule.configuredName || songTaskRule.unrelated) {
+    throw new Error(`编歌附件规则没有覆盖正式任务名称：${JSON.stringify(songTaskRule)}`);
+  }
   const ruleControlSizing = await admin.evaluate(() => ({
     gateWidth: document.getElementById("gateMode")?.getBoundingClientRect().width || 0,
     numeric: [...document.querySelectorAll("[data-rulenum]")].map(input => ({
