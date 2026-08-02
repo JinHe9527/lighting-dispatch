@@ -707,11 +707,12 @@ async function auditMobileAccount(page, profile) {
     nowLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-label')?.textContent,
     taskLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.textContent,
     taskLabelWidth: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.getBoundingClientRect().width || 0,
+    taskRangeHeight: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-range')?.getBoundingClientRect().height || 0,
     legacyTaskTime: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
   }));
   if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
       tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers !== 1 ||
-      !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "") || !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 38 || tomorrowJump.legacyTaskTime) {
+      !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "") || !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 28 || tomorrowJump.taskRangeHeight !== 4 || tomorrowJump.legacyTaskTime) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
   }
   const timelineOrderId = await admin.evaluate(() => {
@@ -997,7 +998,7 @@ async function auditMobileAccount(page, profile) {
     throw new Error(`手机规则控件被说明文字挤压：${JSON.stringify(ruleControlSizing)}`);
   }
   await admin.locator('.mobile-nav [data-page="dispatch"]').click();
-  const mobileAssignee = admin.locator(".mobile-assignee").filter({ hasText: "测试师傅" });
+  const mobileAssignee = admin.locator(".dispatch-order-owner").filter({ hasText: "测试师傅" });
   await mobileAssignee.first().waitFor();
   if (!await mobileAssignee.count()) {
     throw new Error("手机管理端工单未直接显示负责人");
@@ -1007,36 +1008,45 @@ async function auditMobileAccount(page, profile) {
   }
   await admin.locator("#dispatchStatusSelect").selectOption("assigned");
   if (new URL(admin.url()).searchParams.get("status") !== "assigned") throw new Error("手机工单状态未写入 URL");
-  if (await admin.locator(".order-row .tag").evaluateAll(tags => tags.some(tag => !tag.textContent.includes("已指派")))) {
+  if (await admin.locator(".order-row .tag").evaluateAll(tags => tags.some(tag => !tag.textContent.includes("待开始")))) {
     throw new Error("手机工单状态选择未正确过滤");
   }
   const dispatchLayout = await admin.evaluate(() => {
     const tabs = document.querySelector(".ws-dispatch .gtabs")?.getBoundingClientRect();
     const actions = ["alertBtn", "refresh", "mobileAccount"].map(id => document.getElementById(id)?.getBoundingClientRect()).filter(Boolean);
     const panelHead = document.querySelector(".ws-dispatch .dispatch-panel>.panel-head");
+    const rows = [...document.querySelectorAll(".dispatch-panel .dispatch-order-row")];
     return {
       topbarHeight: document.querySelector(".topbar")?.getBoundingClientRect().height || 0,
       actionsSameRow: Boolean(tabs && actions.length === 3 && Math.abs(Math.min(...actions.map(rect => rect.top)) - tabs.top) <= 2),
       panelHeadHidden: Boolean(panelHead && getComputedStyle(panelHead).display === "none"),
       directPickers: document.querySelectorAll(".dispatch-panel .order-assignment").length,
       legacyAssignSelects: document.querySelectorAll(".dispatch-panel [data-assignee]").length,
+      rowHeights: rows.map(row => Math.round(row.getBoundingClientRect().height)),
+      oneLine: rows.every(row => { const boxes=[...row.children].map(child=>child.getBoundingClientRect());const centers=boxes.map(box=>box.top+box.height/2);return Math.max(...centers)-Math.min(...centers)<=2 }),
+      roomChips: document.querySelectorAll(".dispatch-panel .dispatch-room").length,
+      distinctRoomColors: timelineTaskColor({room:"2号"}) !== timelineTaskColor({room:"8号"}),
     };
   });
   if (dispatchLayout.topbarHeight > 2 || !dispatchLayout.actionsSameRow || !dispatchLayout.panelHeadHidden ||
-      dispatchLayout.directPickers < 1 || dispatchLayout.legacyAssignSelects) {
-    throw new Error(`手机调度页仍然浪费空间或不能直接指派：${JSON.stringify(dispatchLayout)}`);
+      dispatchLayout.directPickers || dispatchLayout.legacyAssignSelects || dispatchLayout.rowHeights.some(height => height > 62) ||
+      !dispatchLayout.oneLine || dispatchLayout.roomChips < 1 || !dispatchLayout.distinctRoomColors) {
+    throw new Error(`手机调度页仍然存在重复指派区或空间浪费：${JSON.stringify(dispatchLayout)}`);
   }
   const directAssignment = await admin.evaluate(() => {
-    const button = document.querySelector('.dispatch-panel [data-direct-assign]:not(.current):not(:disabled)');
-    const orderId = Number(button?.dataset.directAssign || 0);
+    const detail = document.querySelector('.dispatch-panel .dispatch-order-row .order-extra');
+    const orderId = Number(detail?.dataset.oid || 0);
     const order = state.orders.find(item => item.id === orderId);
-    const current = order?.assignee_id || "";
-    return { orderId, current, target: button?.dataset.workerId || "" };
+    return { orderId, current: order?.assignee_id || "" };
   });
-  if (!directAssignment.current || !directAssignment.target) throw new Error(`没有可用于验证的一键改派人员：${JSON.stringify(directAssignment)}`);
-  await admin.locator(`[data-direct-assign="${directAssignment.orderId}"][data-worker-id="${directAssignment.target}"]`).click();
-  await admin.waitForFunction(({ orderId, target }) => state.orders.find(item => item.id === orderId)?.assignee_id === target, directAssignment);
-  await admin.locator(`[data-direct-assign="${directAssignment.orderId}"][data-worker-id="${directAssignment.current}"]`).click();
+  if (!directAssignment.current) throw new Error(`没有可用于验证详情改派的工单：${JSON.stringify(directAssignment)}`);
+  await admin.locator(`.dispatch-order-row .order-extra[data-oid="${directAssignment.orderId}"]`).click();
+  const target = await admin.evaluate(() => document.querySelector('.order-detail-modal [data-direct-assign]:not(.current):not(:disabled)')?.dataset.workerId || "");
+  if (!target) throw new Error("工单详情没有可用的改派人员");
+  await admin.locator(`.order-detail-modal [data-direct-assign="${directAssignment.orderId}"][data-worker-id="${target}"]`).click();
+  await admin.waitForFunction(({ orderId, target }) => state.orders.find(item => item.id === orderId)?.assignee_id === target, { ...directAssignment, target });
+  await admin.locator(`.dispatch-order-row .order-extra[data-oid="${directAssignment.orderId}"]`).click();
+  await admin.locator(`.order-detail-modal [data-direct-assign="${directAssignment.orderId}"][data-worker-id="${directAssignment.current}"]`).click();
   await admin.waitForFunction(({ orderId, current }) => state.orders.find(item => item.id === orderId)?.assignee_id === current, directAssignment);
   await admin.locator("#dispatchStatusSelect").selectOption("all");
   await admin.locator("#dispatchSearch").fill("测试师傅");
@@ -1050,6 +1060,21 @@ async function auditMobileAccount(page, profile) {
   await admin.locator("#dispatchSearch").fill("");
   await auditMobileLayout(admin, "admin/mobile/dispatch");
   await admin.screenshot({ path: "/tmp/dispatch-admin-mobile-schedule.png", fullPage: true });
+  await admin.setViewportSize({ width: 1440, height: 900 });
+  const desktopDispatchRow = await admin.evaluate(() => {
+    const row = document.querySelector(".dispatch-panel .dispatch-order-row");
+    const boxes = row ? [...row.children].map(child => child.getBoundingClientRect()) : [];
+    return {
+      height: row?.getBoundingClientRect().height || 0,
+      aligned: boxes.length === 5 && Math.max(...boxes.map(box => box.top)) - Math.min(...boxes.map(box => box.top)) <= 12,
+      columns: boxes.length,
+    };
+  });
+  if (desktopDispatchRow.height > 62 || !desktopDispatchRow.aligned || desktopDispatchRow.columns !== 5) {
+    throw new Error(`桌面调度工单没有压成单行：${JSON.stringify(desktopDispatchRow)}`);
+  }
+  await admin.screenshot({ path: "/tmp/dispatch-admin-desktop-dispatch.png", fullPage: true });
+  await admin.setViewportSize({ width: 390, height: 844 });
   const denseOrderRendering = await admin.evaluate(() => {
     const seed = state.orders[0];
     const orders = Array.from({ length: 60 }, (_, index) => ({ ...seed, id: 900000 + index, status: "assigned" }));
@@ -1544,7 +1569,7 @@ async function auditMobileAccount(page, profile) {
   await admin.evaluate(() => navigatePage("dispatch"));
   const createdOrderRow = admin.locator(`.order-row:has([data-detail][data-oid="${createdSelfOrder.id}"])`);
   await createdOrderRow.waitFor();
-  const createdOrderAssignee = await createdOrderRow.locator(".mobile-assignee").innerText();
+  const createdOrderAssignee = await createdOrderRow.locator(".dispatch-order-owner").innerText();
   if (!createdOrderAssignee.includes("测试师傅")) {
     throw new Error(`管理端手机未显示自助下单负责人：${createdOrderAssignee}`);
   }
