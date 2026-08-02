@@ -64,13 +64,14 @@ class DispatchService:
     @staticmethod
     def _task(conn, grp, task_type, custom_minutes=None):
         row = conn.execute("SELECT * FROM sla WHERE grp=? AND task_type=?", (grp, task_type)).fetchone()
+        if custom_minutes not in (None, ""):
+            minutes = int(custom_minutes)
+            if minutes < 10 or minutes > 720:
+                raise ValueError("duration")
+            return minutes, row["buffer"] if row else 0, bool(row)
         if row:
             return row["minutes"], row["buffer"], True
-        try:
-            minutes = int(custom_minutes or 30)
-        except (TypeError, ValueError):
-            minutes = 30
-        return max(10, min(720, minutes)), 0, False
+        return 30, 0, False
 
     @staticmethod
     def _order_dict(row):
@@ -204,8 +205,11 @@ class DispatchService:
                 return 403 if user["role"] == "team" else 400, error
 
             minutes, buffer, known_task = self._task(conn, grp, task_type, body.get("minutes"))
-            if not known_task:
+            custom_task = str(body.get("custom_task") or "").lower() in ("1", "true", "on", "yes")
+            if not known_task and not custom_task:
                 return 400, "任务类型尚未配置，请先由管理员在规则库中添加"
+            if custom_task and (len(task_type) < 2 or len(task_type) > 80):
+                return 400, "自定义任务请用 2–80 个字明确说明需要做什么"
             when = (body.get("when") or "auto").strip()
             urgent = 1 if (
                 business.is_manager(user, grp)
@@ -234,7 +238,7 @@ class DispatchService:
                         return 400, f"团队账号只能预约未来 {horizon} 天内的时段"
                 if not arrive:
                     return 400, "预约开始时间无效"
-                # 预约占用时长始终由任务标准工时决定。
+                # 预约从所选到岗时间开始，按本次填写的预计时长占用人员。
                 buffer = 0
                 base_time = arrive
             elif when == "auto":
@@ -268,7 +272,7 @@ class DispatchService:
                        AND status NOT IN ('cancelled','abnormal')""",
                     (team["id"], order_date),
                 ).fetchone()["minutes"]
-                if day_cap and used + minutes > day_cap:
+                if day_cap and used + minutes > day_cap and minutes <= 240:
                     return 409, f"该团队当天预约将超过 {day_cap} 分钟上限"
 
             note = (body.get("note") or "").strip()[:2000]
@@ -280,15 +284,18 @@ class DispatchService:
                     and self.setting("rule_biange_media", "1") == "1":
                 return 400, "编歌必须上传歌曲音频或视频"
 
+            duration_review = "pending" if minutes > 240 and not business.is_manager(user, grp) else "approved"
             cursor = conn.execute(
                 """INSERT INTO orders(
                      date,team_id,team,room,task_type,minutes,base_time,arrive,grp,status,
-                     creator_id,creator_name,note,created_at,urgent,booked,scheduled_start,scheduled_end,version
-                   ) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,1)""",
+                     creator_id,creator_name,note,created_at,urgent,booked,scheduled_start,scheduled_end,
+                     duration_review,version
+                   ) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,1)""",
                 (
                     order_date, team["id"], team["name"], team["room"], task_type, minutes,
                     base_time, arrive, grp, user["open_id"], user["name"], note,
                     business.now_iso(), urgent, booked, business.format_dt(start), business.format_dt(end),
+                    duration_review,
                 ),
             )
             order_id = cursor.lastrowid
@@ -336,6 +343,29 @@ class DispatchService:
             elif conn.execute("SELECT COALESCE(auto,0) auto FROM groups WHERE name=?", (grp,)).fetchone()["auto"]:
                 worker = business.fair_assignee(conn, order)
 
+            if duration_review == "pending":
+                conn.execute(
+                    "UPDATE orders SET duration_assignee_id=? WHERE id=?",
+                    (worker["open_id"] if worker else "", order_id),
+                )
+                business.add_event(conn, order_id, "超长任务待审核", user, "", "pending", f"{task_type} · {minutes}分钟")
+                reviewers = conn.execute(
+                    """SELECT open_id FROM users WHERE COALESCE(approved,0)=1 AND COALESCE(blocked,0)=0
+                       AND ((role='admin' AND COALESCE(read_only,0)=0)
+                            OR (role='staff' AND COALESCE(lead,0)=1 AND grp=?))""",
+                    (grp,),
+                ).fetchall()
+                for reviewer in reviewers:
+                    business.queue_notification(
+                        conn,
+                        reviewer["open_id"],
+                        f"超4小时任务待审核：{grp} · {team['name']} · {task_type} · {minutes}分钟\n{self.base_url}",
+                        f"order:{order_id}:duration-review",
+                        urgent=True,
+                    )
+                conn.commit()
+                return 200, None
+
             if worker:
                 conn.execute(
                     """UPDATE orders SET assignee_id=?,assignee_name=?,status='assigned',accepted_at=?,version=version+1
@@ -357,6 +387,93 @@ class DispatchService:
         finally:
             conn.close()
 
+    def review_duration(self, user, body):
+        order_id = self._record_id(body.get("order_id"))
+        decision = (body.get("decision") or "").strip()
+        if not order_id or decision not in ("approve", "reject"):
+            return 400, "审核参数无效"
+        conn = self.db()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+            if not order:
+                return 404, "工单不存在"
+            if not business.is_manager(user, order["grp"]):
+                return 403, "仅本组组长或管理员可审核超长任务"
+            if order["status"] != "pending" or order["duration_review"] != "pending":
+                return 409, "该任务已经审核或不再待审核"
+            if decision == "reject":
+                reason = (body.get("reason") or "超长任务审核未通过").strip()[:500]
+                conn.execute(
+                    """UPDATE orders SET status='cancelled',duration_review='rejected',cancel_reason=?,
+                       cancelled_at=?,duration_assignee_id='',version=version+1 WHERE id=?""",
+                    (reason, business.now_iso(), order_id),
+                )
+                business.add_event(conn, order_id, "驳回超长任务", user, "pending", "cancelled", reason)
+                if order["creator_id"]:
+                    business.queue_notification(
+                        conn,
+                        order["creator_id"],
+                        f"超长任务未通过：{order['team']} · {order['task_type']} · {reason}",
+                        f"order:{order_id}:duration-rejected",
+                    )
+                conn.commit()
+                return 200, None
+
+            worker = None
+            requested_id = (order["duration_assignee_id"] or "").strip()
+            if requested_id:
+                candidate = conn.execute("SELECT * FROM users WHERE open_id=?", (requested_id,)).fetchone()
+                scheduled_start = business.parse_dt(order["scheduled_start"])
+                require_now = bool(scheduled_start and scheduled_start <= datetime.now() + timedelta(minutes=15))
+                if not candidate:
+                    return 409, "原定负责人不存在，请驳回后重新下单"
+                block = business.assignment_block(
+                    conn, candidate, order, require_available_now=require_now
+                )
+                if block:
+                    return 409, f"原定负责人当前无法承担该任务：{block}"
+                worker = candidate
+            if not worker:
+                auto = conn.execute(
+                    "SELECT COALESCE(auto,0) auto FROM groups WHERE name=?", (order["grp"],)
+                ).fetchone()
+                if auto and auto["auto"]:
+                    worker = business.fair_assignee(conn, order)
+            if worker:
+                stamp = business.now_iso()
+                conn.execute(
+                    """UPDATE orders SET duration_review='approved',assignee_id=?,assignee_name=?,
+                       duration_assignee_id='',status='assigned',accepted_at=?,version=version+1 WHERE id=?""",
+                    (worker["open_id"], business.display_name(worker), stamp, order_id),
+                )
+                conn.execute("UPDATE users SET last_assigned_at=? WHERE open_id=?", (stamp, worker["open_id"]))
+                updated = self._order_dict(conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone())
+                self._queue_assignment(conn, updated, worker, "超长任务审核通过")
+            else:
+                conn.execute(
+                    """UPDATE orders SET duration_review='approved',duration_assignee_id='',
+                       version=version+1 WHERE id=?""",
+                    (order_id,),
+                )
+                updated = self._order_dict(conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone())
+                self._queue_open_order(conn, updated)
+            business.add_event(
+                conn, order_id, "通过超长任务", user, "pending", updated["status"],
+                f"{order['minutes']}分钟",
+            )
+            if order["creator_id"]:
+                business.queue_notification(
+                    conn,
+                    order["creator_id"],
+                    f"超长任务已通过：{order['team']} · {order['task_type']} · {order['minutes']}分钟",
+                    f"order:{order_id}:duration-approved",
+                )
+            conn.commit()
+            return 200, None
+        finally:
+            conn.close()
+
     def assign(self, user, body):
         order_id = self._record_id(body.get("order_id"))
         if not order_id:
@@ -369,6 +486,8 @@ class DispatchService:
                 return 404, "工单不存在"
             if order["status"] != "pending":
                 return 409, "只有待派工订单可以接单或指派"
+            if order["duration_review"] == "pending":
+                return 409, "超过4小时的任务需先由组长或管理员审核"
             target_id = (body.get("user_id") or "").strip()
             if target_id:
                 if not business.can_manage_order(user, order):
@@ -1012,32 +1131,88 @@ class DispatchService:
                 return 403, "无权编辑该订单"
             if order["status"] != "pending":
                 return 409, "只有待派工订单可以编辑"
+            if order["duration_review"] == "pending":
+                return 409, "超长任务审核中；如需修改，请先取消后重新下单"
             task_type = (body.get("task") or order["task_type"] or "").strip()
             if not task_type:
                 return 400, "任务不能为空"
             minutes, buffer, known_task = self._task(conn, order["grp"], task_type, body.get("minutes"))
-            if not known_task:
+            current_known = conn.execute(
+                "SELECT 1 FROM sla WHERE grp=? AND task_type=?",
+                (order["grp"], order["task_type"]),
+            ).fetchone()
+            custom_task = str(body.get("custom_task") or "").lower() in ("1", "true", "on", "yes")
+            existing_custom = task_type == order["task_type"] and not current_known
+            if not known_task and not custom_task and not existing_custom:
                 return 400, "任务类型尚未配置，请先由管理员在规则库中添加"
+            if not known_task and (len(task_type) < 2 or len(task_type) > 80):
+                return 400, "自定义任务请用 2–80 个字明确说明需要做什么"
+            if (
+                order["grp"] == "灯光组"
+                and "编歌" in task_type
+                and not order["media"]
+                and not order["media2"]
+                and self.setting("rule_biange_media", "1") == "1"
+            ):
+                return 400, "编歌必须上传歌曲音频或视频"
             arrive = order["arrive"]
             base_time = order["base_time"]
-            if not order["booked"]:
+            if not order["booked"] and base_time and base_time != order["arrive"]:
                 team = conn.execute("SELECT * FROM teams WHERE id=?", (order["team_id"],)).fetchone()
-                if base_time and team:
+                if team:
                     arrive = self._subtract(base_time, minutes + buffer)
             start, end = business.schedule_bounds(order["date"], arrive, minutes)
             if not start or not end:
                 return 400, "更新后的订单时间无效"
+            if order["booked"] and user["role"] == "team":
+                day_cap = max(0, min(1440, int(self.setting("book_team_day_min", "240") or 240)))
+                used = conn.execute(
+                    """SELECT COALESCE(SUM(minutes),0) minutes FROM orders
+                       WHERE team_id=? AND date=? AND booked=1 AND id!=?
+                       AND status NOT IN ('cancelled','abnormal')""",
+                    (order["team_id"], order["date"], order_id),
+                ).fetchone()["minutes"]
+                if day_cap and used + minutes > day_cap and minutes <= 240:
+                    return 409, f"该团队当天预约将超过 {day_cap} 分钟上限"
             urgent = order["urgent"]
             if business.is_manager(user, order["grp"]) and "urgent" in body:
                 urgent = 1 if str(body.get("urgent")) in ("1", "true", "on", "yes") else 0
+            duration_review = (
+                "pending" if minutes > 240 and not business.is_manager(user, order["grp"]) else "approved"
+            )
             conn.execute(
                 """UPDATE orders SET task_type=?,minutes=?,arrive=?,urgent=?,scheduled_start=?,scheduled_end=?,
-                   version=version+1 WHERE id=?""",
-                (task_type, minutes, arrive, urgent, business.format_dt(start), business.format_dt(end), order_id),
+                   duration_review=?,version=version+1 WHERE id=?""",
+                (
+                    task_type, minutes, arrive, urgent, business.format_dt(start), business.format_dt(end),
+                    duration_review, order_id,
+                ),
             )
-            business.add_event(conn, order_id, "编辑工单", user, "pending", "pending", f"{task_type} · {arrive}")
+            event_type = "编辑后待超长审核" if duration_review == "pending" else "编辑工单"
+            business.add_event(
+                conn, order_id, event_type, user, "pending", "pending",
+                f"{task_type} · {minutes}分钟 · {arrive}",
+            )
+            if duration_review == "pending":
+                reviewers = conn.execute(
+                    """SELECT open_id FROM users WHERE COALESCE(approved,0)=1 AND COALESCE(blocked,0)=0
+                       AND ((role='admin' AND COALESCE(read_only,0)=0)
+                            OR (role='staff' AND COALESCE(lead,0)=1 AND grp=?))""",
+                    (order["grp"],),
+                ).fetchall()
+                for reviewer in reviewers:
+                    business.queue_notification(
+                        conn,
+                        reviewer["open_id"],
+                        f"超4小时任务待审核：{order['grp']} · {order['team']} · {task_type} · {minutes}分钟\n{self.base_url}",
+                        f"order:{order_id}:duration-review:v{order['version'] + 1}",
+                        urgent=True,
+                    )
             conn.commit()
             return 200, None
+        except (ValueError, TypeError):
+            conn.rollback()
+            return 400, "任务时长必须为 10–720 分钟"
         finally:
             conn.close()
 

@@ -681,34 +681,215 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 403)
         self.assertIn("只能给自己下单", message)
 
-    def test_booking_duration_always_uses_task_standard(self):
+    def test_booking_duration_uses_selected_minutes_and_custom_task(self):
         conn = server.db()
         standard_minutes = conn.execute(
             "SELECT minutes FROM sla WHERE grp='灯光组' AND task_type=?", (self.task,)
         ).fetchone()["minutes"]
         conn.close()
 
-        for user, hour, creator in (
-            (self.team, 14, "team"),
-            (self.lead, 17, "lead"),
-            (self.admin, 20, "admin"),
-        ):
-            body = self.order_body(hour, creator)
-            body["end"] = f"{(hour + 6) % 24:02d}:00"
-            self.assertEqual(server.SERVICE.order(user, body)[0], 200)
-            order = self.latest_order()
-            self.assertEqual(order["minutes"], standard_minutes)
-
-        body = self.order_body(23, "admin")
-        body.pop("end")
-        self.assertEqual(server.SERVICE.order(self.admin, body)[0], 200)
+        standard = self.order_body(14)
+        self.assertEqual(server.SERVICE.order(self.team, standard)[0], 200)
         self.assertEqual(self.latest_order()["minutes"], standard_minutes)
 
+        selected = self.order_body(17, "admin")
+        selected["minutes"] = 180
+        self.assertEqual(server.SERVICE.order(self.admin, selected)[0], 200)
+        selected_order = self.latest_order()
+        self.assertEqual(selected_order["minutes"], 180)
+        self.assertEqual(
+            datetime.fromisoformat(selected_order["scheduled_end"])
+            - datetime.fromisoformat(selected_order["scheduled_start"]),
+            timedelta(minutes=180),
+        )
+
+        custom = self.order_body(21, "admin")
+        custom.update({"task": "直播间整场灯光重做", "custom_task": "1", "minutes": 150})
+        self.assertEqual(server.SERVICE.order(self.admin, custom)[0], 200)
+        self.assertEqual(self.latest_order()["task_type"], "直播间整场灯光重做")
+        self.assertEqual(self.latest_order()["minutes"], 150)
+
+        missing_flag = self.order_body(12, "admin")
+        missing_flag["task"] = "未登记的临时任务"
+        code, message = server.SERVICE.order(self.admin, missing_flag)
+        self.assertEqual(code, 400)
+        self.assertIn("尚未配置", message)
+
         source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
-        self.assertNotIn("data-rdur", source)
-        self.assertNotIn('id="qsAt2"', source)
-        self.assertNotIn('id="qsDur"', source)
-        self.assertIn("预约时长按任务标准工时自动计算", source)
+        self.assertIn('id="qsMinutes"', source)
+        self.assertIn('id="reqMinutes"', source)
+        self.assertIn("自定义任务…", source)
+
+    def test_over_four_hours_requires_manager_review_before_assignment(self):
+        body = self.order_body(14)
+        body["minutes"] = 300
+        self.assertEqual(server.SERVICE.order(self.team, body), (200, None))
+        order = self.latest_order()
+        self.assertEqual(order["status"], "pending")
+        self.assertEqual(order["duration_review"], "pending")
+
+        code, message = server.SERVICE.assign(
+            self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("先由组长或管理员审核", message)
+
+        self.assertEqual(
+            server.SERVICE.review_duration(
+                self.lead, {"order_id": order["id"], "decision": "approve"}
+            ),
+            (200, None),
+        )
+        approved = self.latest_order()
+        self.assertEqual(approved["duration_review"], "approved")
+        self.assertEqual(approved["status"], "pending")
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            ),
+            (200, None),
+        )
+
+    def test_staff_long_self_order_stays_assigned_to_self_after_review(self):
+        body = self.order_body(14, "staff")
+        body["minutes"] = 300
+        self.assertEqual(server.SERVICE.order(self.staff, body), (200, None))
+        pending = self.latest_order()
+        self.assertEqual(pending["duration_review"], "pending")
+        self.assertEqual(pending["assignee_id"], "")
+        self.assertEqual(pending["duration_assignee_id"], self.staff["open_id"])
+        self.assertEqual(
+            server.SERVICE.review_duration(
+                self.lead, {"order_id": pending["id"], "decision": "approve"}
+            ),
+            (200, None),
+        )
+        approved = self.latest_order()
+        self.assertEqual(approved["duration_review"], "approved")
+        self.assertEqual(approved["status"], "assigned")
+        self.assertEqual(approved["assignee_id"], self.staff["open_id"])
+
+    def test_pending_order_edit_supports_custom_task_and_duration_review(self):
+        self.assertEqual(server.SERVICE.order(self.team, self.order_body(14)), (200, None))
+        order = self.latest_order()
+        self.assertEqual(
+            server.SERVICE.edit(
+                self.team,
+                {
+                    "order_id": order["id"],
+                    "task": "临时舞台灯光整体调整",
+                    "custom_task": "1",
+                    "minutes": 180,
+                },
+            ),
+            (200, None),
+        )
+        edited = self.latest_order()
+        self.assertEqual(edited["task_type"], "临时舞台灯光整体调整")
+        self.assertEqual(edited["minutes"], 180)
+        self.assertEqual(edited["duration_review"], "approved")
+
+        self.assertEqual(
+            server.SERVICE.edit(
+                self.team,
+                {
+                    "order_id": order["id"],
+                    "task": "临时舞台灯光整体调整",
+                    "custom_task": "1",
+                    "minutes": 300,
+                },
+            ),
+            (200, None),
+        )
+        awaiting = self.latest_order()
+        self.assertEqual(awaiting["minutes"], 300)
+        self.assertEqual(awaiting["duration_review"], "pending")
+        code, message = server.SERVICE.edit(
+            self.team,
+            {
+                "order_id": order["id"],
+                "task": "临时舞台灯光整体调整",
+                "custom_task": "1",
+                "minutes": 180,
+            },
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("审核中", message)
+
+    def test_edit_cannot_bypass_booking_cap_or_biange_attachment_rule(self):
+        self.assertEqual(server.SERVICE.order(self.team, self.order_body(14)), (200, None))
+        first = self.latest_order()
+        self.assertEqual(server.SERVICE.order(self.team, self.order_body(18)), (200, None))
+        code, message = server.SERVICE.edit(
+            self.team,
+            {"order_id": first["id"], "task": self.task, "minutes": 200},
+        )
+        self.assertEqual(code, 409)
+        self.assertIn("当天预约", message)
+
+        code, message = server.SERVICE.edit(
+            self.team,
+            {
+                "order_id": first["id"],
+                "task": "编歌临时需求",
+                "custom_task": "1",
+                "minutes": 60,
+            },
+        )
+        self.assertEqual(code, 400)
+        self.assertIn("必须上传", message)
+
+    def test_manager_long_task_skips_review_and_rejection_cancels_team_request(self):
+        manager_body = self.order_body(14, "admin")
+        manager_body.update({"minutes": 300, "assignee": self.staff["open_id"]})
+        self.assertEqual(server.SERVICE.order(self.admin, manager_body), (200, None))
+        manager_order = self.latest_order()
+        self.assertEqual(manager_order["duration_review"], "approved")
+        self.assertEqual(manager_order["status"], "assigned")
+
+        team_body = self.order_body(22)
+        team_body["minutes"] = 300
+        self.assertEqual(server.SERVICE.order(self.team, team_body), (200, None))
+        team_order = self.latest_order()
+        self.assertEqual(
+            server.SERVICE.review_duration(
+                self.lead,
+                {"order_id": team_order["id"], "decision": "reject", "reason": "人员不足"},
+            ),
+            (200, None),
+        )
+        rejected = self.latest_order()
+        self.assertEqual(rejected["status"], "cancelled")
+        self.assertEqual(rejected["duration_review"], "rejected")
+        self.assertEqual(rejected["cancel_reason"], "人员不足")
+
+    def test_deleted_task_is_not_seeded_again_on_restart(self):
+        conn = server.db()
+        task = dict(
+            conn.execute(
+                "SELECT task_type,minutes,buffer,note,grp FROM sla WHERE grp='灯光组' AND task_type=?",
+                (self.task,),
+            ).fetchone()
+        )
+        conn.execute("DELETE FROM sla WHERE grp=? AND task_type=?", (task["grp"], task["task_type"]))
+        conn.commit()
+        conn.close()
+        try:
+            server.init_db()
+            conn = server.db()
+            restored = conn.execute(
+                "SELECT 1 FROM sla WHERE grp=? AND task_type=?", (task["grp"], task["task_type"])
+            ).fetchone()
+            conn.close()
+            self.assertIsNone(restored)
+        finally:
+            conn = server.db()
+            conn.execute(
+                "INSERT INTO sla(task_type,minutes,buffer,note,grp) VALUES(?,?,?,?,?)",
+                (task["task_type"], task["minutes"], task["buffer"], task["note"], task["grp"]),
+            )
+            conn.commit()
+            conn.close()
 
     def test_assignment_conflict_and_early_start(self):
         self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)

@@ -472,6 +472,17 @@ async function auditMobileAccount(page, profile) {
   await admin.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await admin.locator('[data-crew-section="roster"]').focus();
   await admin.keyboard.press("ArrowRight");
+  await admin.getByRole("heading", { name: "灯光师本职范围", exact: true }).waitFor();
+  const responsibilityLayout = await admin.evaluate(() => ({
+    people: document.querySelectorAll('.duty-owner-card').length,
+    teams: document.querySelectorAll('.duty-team-row').length,
+    ownerSelectors: document.querySelectorAll('.duty-team-row [data-field="lighting_owner_id"]').length,
+  }));
+  if (!responsibilityLayout.people || !responsibilityLayout.teams || responsibilityLayout.teams !== responsibilityLayout.ownerSelectors) {
+    throw new Error(`本职直播间设置不完整：${JSON.stringify(responsibilityLayout)}`);
+  }
+  await admin.locator('[data-crew-section="responsibilities"]').focus();
+  await admin.keyboard.press("ArrowRight");
   await admin.getByRole("heading", { name: "账号与使用身份", exact: true }).waitFor();
   const accountLayout = await admin.evaluate(() => {
     const rows=[...document.querySelectorAll('.access-list .access-row')];
@@ -545,7 +556,10 @@ async function auditMobileAccount(page, profile) {
   if (await admin.getByText("人员能力矩阵", { exact: true }).count()) throw new Error("人员能力矩阵仍然显示");
   await admin.locator('[data-crew-section="accounts"]').focus();
   await admin.keyboard.press("ArrowLeft");
-  await admin.getByText("工作人员与班次", { exact: true }).waitFor();
+  await admin.getByRole("heading", { name: "灯光师本职范围", exact: true }).waitFor();
+  await admin.locator('[data-crew-section="responsibilities"]').focus();
+  await admin.keyboard.press("ArrowLeft");
+  await admin.locator('.crew-tbl').waitFor();
   const today = await admin.evaluate(() => todayStr());
   await admin.locator('[data-leave="test:staff"]').click();
   await admin.locator("#absenceSave").click();
@@ -589,10 +603,21 @@ async function auditMobileAccount(page, profile) {
   await admin.locator('.side [data-page="request"]').click();
   await admin.locator('[data-when="book"]').click();
   await admin.getByText("预计结束", { exact: true }).waitFor();
-  await admin.getByText("预约时长按任务标准工时自动计算，不占用额外时段。", { exact: true }).waitFor();
-  if (await admin.locator('[data-rdur], #reqEnd, #qsAt2, #qsDur').count()) {
-    throw new Error("预约界面仍存在自定义时长控件");
+  await admin.locator('#reqMinutes').fill('180');
+  await admin.locator('#reqMinutes').press('Tab');
+  await admin.waitForFunction(() => Number(document.getElementById('reqMinutes')?.value) === 180);
+  const durationState = await admin.evaluate(() => ({
+    minutes: Number(document.getElementById('reqMinutes')?.value),
+    start: document.getElementById('reqAt')?.value,
+    end: document.getElementById('reqEndText')?.textContent.trim(),
+    expected: addMinStr(document.getElementById('reqAt')?.value, 180),
+  }));
+  if (durationState.minutes !== 180 || durationState.end !== durationState.expected) {
+    throw new Error(`预约时长与结束时间没有联动：${JSON.stringify(durationState)}`);
   }
+  await admin.locator('#requestTask').selectOption('__custom__');
+  await admin.locator('#requestTaskCustom').waitFor({ state: 'visible' });
+  await admin.locator('#requestTaskCustom').fill('临时整场灯光调整');
   await admin.locator("#requestNote").fill("尚未提交的测试草稿");
   await admin.locator('.side [data-page="stats"]').click();
   const draftDialog = admin.locator('[role="dialog"]');
@@ -667,7 +692,7 @@ async function auditMobileAccount(page, profile) {
   const lightingPriority = await admin.evaluate(() => {
     const team = state.teams[0];
     reqWhen = "book";
-    reqDate = addDaysStr(1);
+    reqDate = addDaysStr(5);
     reqAt = "15:00";
     reqGroup = "灯光组";
     reqTeam = team.name;
@@ -679,9 +704,10 @@ async function auditMobileAccount(page, profile) {
       owner: team.lighting_owner_id,
       first: choices[0]?.value || "",
       firstLabel: choices[0]?.textContent || "",
+      selected: holder.value,
     };
   });
-  if (lightingPriority.owner !== "test:staff" || lightingPriority.first !== "test:staff" || !lightingPriority.firstLabel.includes("本职负责")) {
+  if (lightingPriority.owner !== "test:staff" || lightingPriority.first !== "test:staff" || lightingPriority.selected !== "test:staff" || !lightingPriority.firstLabel.includes("本职负责")) {
     throw new Error(`下单选人没有优先显示本职灯光师：${JSON.stringify(lightingPriority)}`);
   }
   const desktopLayout = await admin.evaluate(() => {
@@ -1448,8 +1474,18 @@ async function auditMobileAccount(page, profile) {
   if (await lead.locator("#qsDate").inputValue() !== scheduleTestDate) {
     throw new Error("从排班页派单时没有保留当前排班日期");
   }
+  if (await lead.locator('[data-qw="now"]').count() || !await lead.locator('#qsDate').evaluate(input => input.readOnly)) {
+    throw new Error("未来日期派单仍允许切换为立即到岗或修改既定日期");
+  }
   const futurePlanInfo = await lead.locator("#qsInfo").innerText();
   if (!futurePlanInfo.includes("预约")) throw new Error(`从排班页打开的派单不是预约模式：${futurePlanInfo}`);
+  await lead.locator('#qsTask').selectOption('__custom__');
+  await lead.locator('#qsTaskCustom').fill('未来整场灯光调整');
+  await lead.locator('#qsMinutes').fill('300');
+  await lead.locator('#qsMinutes').dispatchEvent('change');
+  if (!await lead.locator('#qsDurationLabel').innerText().then(text => text.includes('需审核'))) {
+    throw new Error("快捷派单超过4小时没有显示审核提示");
+  }
   const quickSubmitLabel = await lead.locator("#qsGo").innerText();
   await lead.locator("#qsAt").fill("");
   await lead.locator("#qsGo").click();

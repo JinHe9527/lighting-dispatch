@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802z"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802aa"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -251,6 +251,8 @@ def init_db():
         "media2": "TEXT DEFAULT ''", "media2_kind": "TEXT DEFAULT ''",
         "booked": "INTEGER DEFAULT 0",
         "overrun_notified": "INTEGER DEFAULT 0",
+        "duration_review": "TEXT DEFAULT ''",
+        "duration_assignee_id": "TEXT DEFAULT ''",
     })
     ensure_columns(conn, "users", {"grp": "TEXT DEFAULT ''", "lead": "INTEGER DEFAULT 0",
                                     "intern": "INTEGER DEFAULT 0", "leave_until": "TEXT DEFAULT ''",
@@ -269,19 +271,31 @@ def init_db():
     conn.execute("INSERT OR IGNORE INTO settings(k,v) VALUES('feishu_calendar_name','团播派工排期')")
     ensure_columns(conn, "sla", {"grp": "TEXT DEFAULT ''"})
     ensure_columns(conn, "groups", {"auto": "INTEGER DEFAULT 0"})
-    # 组:种子三个组 + 历史数据归入首个组 + 空组补默认任务分类
+    # 组:种子三个组 + 历史数据归入首个组；默认任务只在数据库首次初始化时创建。
     conn.execute("DROP INDEX IF EXISTS idx_sla_task_type")  # 任务名允许跨组重复
     if conn.execute("SELECT COUNT(*) c FROM groups").fetchone()["c"] == 0:
         conn.executemany("INSERT INTO groups(name,color,sort) VALUES(?,?,?)", DEFAULT_GROUPS)
     conn.execute("UPDATE sla SET grp=? WHERE grp='' OR grp IS NULL", (FIRST_GROUP,))
     conn.execute("UPDATE users SET grp=? WHERE role='staff' AND (grp='' OR grp IS NULL)", (FIRST_GROUP,))
     conn.execute("UPDATE orders SET grp=? WHERE grp='' OR grp IS NULL", (FIRST_GROUP,))
-    for gname, tasks in DEFAULT_GROUP_SLA.items():
-        if conn.execute("SELECT COUNT(*) c FROM sla WHERE grp=?", (gname,)).fetchone()["c"] == 0:
-            conn.executemany("INSERT INTO sla(task_type,minutes,buffer,note,grp) VALUES(?,?,?,?,?)",
-                             [(t[0], t[1], t[2], t[3], gname) for t in tasks])
-    if not conn.execute("SELECT 1 FROM sla WHERE grp='灯光组' AND task_type='编歌'").fetchone():
-        conn.execute("INSERT INTO sla(task_type,minutes,buffer,note,grp) VALUES('编歌',60,10,'需附歌曲音频或视频','灯光组')")
+    task_defaults_initialized = conn.execute(
+        "SELECT v FROM settings WHERE k='task_defaults_initialized'"
+    ).fetchone()
+    if task_defaults_initialized is None:
+        if conn.execute("SELECT COUNT(*) c FROM sla").fetchone()["c"] == 0:
+            for gname, tasks in DEFAULT_GROUP_SLA.items():
+                conn.executemany(
+                    "INSERT INTO sla(task_type,minutes,buffer,note,grp) VALUES(?,?,?,?,?)",
+                    [(t[0], t[1], t[2], t[3], gname) for t in tasks],
+                )
+        conn.execute("INSERT INTO settings(k,v) VALUES('task_defaults_initialized','1')")
+    # 早期版本会在每次启动时强制补回“编歌”。只移除该系统种子一次，此后任务完全由管理员维护。
+    if conn.execute("SELECT v FROM settings WHERE k='legacy_biange_seed_removed'").fetchone() is None:
+        conn.execute(
+            """DELETE FROM sla WHERE grp='灯光组' AND task_type='编歌'
+               AND minutes=60 AND buffer=10 AND note='需附歌曲音频或视频'"""
+        )
+        conn.execute("INSERT INTO settings(k,v) VALUES('legacy_biange_seed_removed','1')")
     # 迁移:teams / sla 为空时,从 data.json(真数据)导入,否则用默认 SLA
     if conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"] == 0:
         rows = []
@@ -297,7 +311,9 @@ def init_db():
         if rows:
             conn.executemany("INSERT INTO teams(name,room,rehearsal,onair) VALUES(?,?,?,?)", rows)
             print(f"[migrate] 已从 data.json 导入 {len(rows)} 个团队")
-    if conn.execute("SELECT COUNT(*) c FROM sla").fetchone()["c"] == 0:
+    if task_defaults_initialized is None and conn.execute(
+        "SELECT COUNT(*) c FROM sla"
+    ).fetchone()["c"] == 0:
         rows = []
         if LEGACY_JSON.exists():
             try:
@@ -902,7 +918,11 @@ def _calendar_room(order):
 
 def _calendar_event_body(order):
     start, end = _calendar_bounds(order)
-    status = CALENDAR_STATUS_LABEL.get(order["status"], order["status"] or "待派")
+    status = (
+        "超长待审核"
+        if order["duration_review"] == "pending"
+        else CALENDAR_STATUS_LABEL.get(order["status"], order["status"] or "待派")
+    )
     room = _calendar_room(order)
     assignee = order["assignee_name"] or "待派工"
     description = "\n".join(
@@ -912,6 +932,7 @@ def _calendar_event_body(order):
             f"直播团队：{order['team']} · {room}",
             f"负责人：{assignee}",
             f"任务：{order['task_type']}",
+            f"预计时长：{order['minutes']}分钟",
             f"状态：{status}",
             f"下单人：{order['creator_name'] or '未记录'}",
             f"备注：{order['note'] or '无'}",
@@ -3530,6 +3551,7 @@ class Handler(BaseHTTPRequestHandler):
             routes = {
                 "/api/claim-admin": do_claim_admin,
                 "/api/order": SERVICE.order,
+                "/api/duration-review": SERVICE.review_duration,
                 "/api/assign": SERVICE.assign,
                 "/api/start": SERVICE.start,
                 "/api/report-start": SERVICE.report_start,
