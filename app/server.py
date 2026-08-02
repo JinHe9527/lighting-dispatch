@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802j"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802k"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -1531,7 +1531,7 @@ def api_users(user):
 
 
 def api_schedule(user, params):
-    """返回指定日、周或月的有效班次和工单。"""
+    """返回指定单日、连续三日、周或月的有效班次和工单。"""
     rng = (params.get("range") or "week").strip()
     now = biz_now()  # 周/月区间与「今天」都按排班日,凌晨不跳日
     base_text = (params.get("date") or now.strftime("%Y-%m-%d")).strip()
@@ -1544,6 +1544,9 @@ def api_schedule(user, params):
         nxt = frm.replace(year=frm.year + 1, month=1) if frm.month == 12 \
             else frm.replace(month=frm.month + 1)
         to = nxt - timedelta(days=1)
+    elif rng == "three":
+        frm = base
+        to = base + timedelta(days=2)
     elif rng == "day":
         frm = base
         to = base

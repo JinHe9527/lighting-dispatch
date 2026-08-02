@@ -342,6 +342,32 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(code, 403)
         self.assertIn("不能调整自己的排班", message)
 
+    def test_three_day_schedule_returns_continuous_dates(self):
+        start = (datetime.now().date() + timedelta(days=8)).isoformat()
+        code, schedule = server.api_schedule(
+            self.lead, {"range": "three", "date": start}
+        )
+        self.assertEqual(code, 200)
+        self.assertEqual(schedule["range"], "three")
+        self.assertEqual(schedule["from"], start)
+        self.assertEqual(
+            schedule["to"],
+            (datetime.fromisoformat(start).date() + timedelta(days=2)).isoformat(),
+        )
+        worker_dates = {
+            item["date"]
+            for item in schedule["assignments"]
+            if item["worker_id"] == self.staff["open_id"]
+        }
+        self.assertEqual(
+            worker_dates,
+            {
+                start,
+                (datetime.fromisoformat(start).date() + timedelta(days=1)).isoformat(),
+                (datetime.fromisoformat(start).date() + timedelta(days=2)).isoformat(),
+            },
+        )
+
     def test_staff_state_only_contains_own_group_shift_overrides(self):
         work_date = (datetime.now().date() + timedelta(days=1)).isoformat()
         conn = server.db()
