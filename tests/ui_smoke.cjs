@@ -715,22 +715,27 @@ async function auditMobileAccount(page, profile) {
     throw new Error("鼠标离开时间轴后点位时间仍未隐藏");
   }
   await admin.locator('[data-mobile-day]').nth(1).click();
-  const tomorrowJump = await admin.evaluate(() => ({
-    active: document.querySelector('[data-mobile-day].active')?.dataset.mobileDay,
-    target: document.querySelectorAll('[data-mobile-day-section]')[1]?.dataset.mobileDaySection,
-    visible: [...document.querySelectorAll('[data-mobile-day-section]')].filter(section => !section.hidden).map(section => section.dataset.mobileDaySection),
-    adjustDate: document.querySelector('[data-schedule-edit]')?.dataset.scheduleEdit,
-    planDate: document.querySelector('[data-plan-day]')?.dataset.planDay,
-    nowLayers: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-layer').length,
-    nowLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-label')?.textContent,
-    taskLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.textContent,
-    taskLabelWidth: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.getBoundingClientRect().width || 0,
-    taskRangeHeight: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-range')?.getBoundingClientRect().height || 0,
-    legacyTaskTime: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
-  }));
+  const tomorrowJump = await admin.evaluate(() => {
+    const job=document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job'),label=job?.querySelector('.mobile-timeline-job-label'),track=job?.parentElement;
+    const duration=job?Number(job.dataset.timelineJobEnd)-Number(job.dataset.timelineJobStart):0,range=track?Number(track.dataset.timelineLast)-Number(track.dataset.timelineFirst):0,expectedWidth=track&&range?track.clientWidth*duration/range:0;
+    return {
+      active: document.querySelector('[data-mobile-day].active')?.dataset.mobileDay,
+      target: document.querySelectorAll('[data-mobile-day-section]')[1]?.dataset.mobileDaySection,
+      visible: [...document.querySelectorAll('[data-mobile-day-section]')].filter(section => !section.hidden).map(section => section.dataset.mobileDaySection),
+      adjustDate: document.querySelector('[data-schedule-edit]')?.dataset.scheduleEdit,
+      planDate: document.querySelector('[data-plan-day]')?.dataset.planDay,
+      nowLayers: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-layer').length,
+      nowLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-label')?.textContent,
+      taskLabel: label?.textContent,
+      shortTask: Boolean(job?.classList.contains('short')),
+      shortLabelHidden: Boolean(label&&getComputedStyle(label).display==='none'),
+      exactTaskWidth: Boolean(job&&Math.abs(job.getBoundingClientRect().width-expectedWidth)<=1),
+      legacyTaskDecorations: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-range,[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
+    }
+  });
   if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
       tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers || tomorrowJump.nowLabel ||
-      !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 28 || tomorrowJump.taskRangeHeight !== 4 || tomorrowJump.legacyTaskTime) {
+      !tomorrowJump.taskLabel || !tomorrowJump.shortTask || !tomorrowJump.shortLabelHidden || !tomorrowJump.exactTaskWidth || tomorrowJump.legacyTaskDecorations) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
   }
   const taskPointer = admin.locator('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job').first();

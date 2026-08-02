@@ -861,11 +861,11 @@ button.day-person-tile:hover{background:var(--fill)}
 button.mobile-timeline-track{cursor:crosshair}
 button.mobile-timeline-track:hover{background-color:var(--fill-2)}
 .mobile-timeline-shift{position:absolute;top:7px;bottom:7px;left:var(--left);width:var(--width);border:1px solid color-mix(in srgb,var(--green) 36%,transparent);border-radius:5px;background:color-mix(in srgb,var(--green) 18%,transparent);pointer-events:none}
-.mobile-timeline-job{position:absolute;z-index:2;top:5px;bottom:5px;left:var(--left);width:max(2px,var(--width));min-width:0;background:transparent;pointer-events:auto;overflow:visible}
-.mobile-timeline-job-range{position:absolute;right:0;bottom:2px;left:0;min-width:2px;height:4px;border-radius:2px;background:var(--gc)}
-.mobile-timeline-job-label{position:absolute;left:50%;top:3px;min-width:28px;height:20px;padding:0 5px;border:0;border-radius:4px;background:var(--gc);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:750;line-height:1;white-space:nowrap;transform:translateX(-50%)}
-.mobile-timeline-job.edge-start .mobile-timeline-job-label{left:0;transform:none}
-.mobile-timeline-job.edge-end .mobile-timeline-job-label{right:0;left:auto;transform:none}
+.mobile-timeline-job{position:absolute;z-index:2;top:9px;bottom:9px;left:var(--left);width:max(2px,var(--width));min-width:0;border:1px solid color-mix(in srgb,var(--gc) 86%,var(--text));border-radius:4px;background:color-mix(in srgb,var(--gc) 82%,transparent);pointer-events:auto;overflow:hidden;transition:filter .14s var(--ease),box-shadow .14s var(--ease)}
+.mobile-timeline-job-label{width:100%;height:100%;padding:0 3px;color:#fff;display:grid;place-items:center;font-size:9px;font-weight:750;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:clip;text-shadow:0 1px 1px rgba(0,0,0,.24)}
+.mobile-timeline-job.short{background:color-mix(in srgb,var(--gc) 46%,transparent)}
+.mobile-timeline-job.short .mobile-timeline-job-label{display:none}
+.mobile-timeline-job:hover{filter:brightness(1.12);box-shadow:0 0 0 2px color-mix(in srgb,var(--gc) 20%,transparent)}
 .mobile-timeline-job.done{opacity:.48;filter:saturate(.45)}
 .mobile-timeline-now-layer{position:absolute;z-index:4;top:0;right:8px;bottom:0;left:var(--name-col);pointer-events:none}
 .mobile-timeline-now{position:absolute;top:var(--axis-height);bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -1323,7 +1323,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802t";
+const APP_VERSION="v0802u";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2436,9 +2436,8 @@ function mobileTimelineRow(item,dateStr,range){
   const blocks=jobs.map(job=>{
     const order=job.order;
     if(job.end<=range.first||job.start>=range.last)return"";
-    const middle=(mobileTimelinePercent(job.start,range)+mobileTimelinePercent(job.end,range))/2,edge=middle<5?"edge-start":middle>95?"edge-end":"";
-    const room=timelineRoomLabel(order);
-    return`<span class="mobile-timeline-job ${edge} ${order.status==="completed"?"done":""}" data-timeline-order="${order.id}" data-timeline-job-start="${job.start}" data-timeline-job-end="${job.end}" data-timeline-job-room="${esc(room)}" aria-label="${esc(room)}，${scheduleClock(job.start)}至${scheduleClock(job.end)}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span class="mobile-timeline-job-label">${esc(room)}</span><span class="mobile-timeline-job-range" aria-hidden="true"></span></span>`
+    const room=timelineRoomLabel(order),short=job.end-job.start<60;
+    return`<span class="mobile-timeline-job ${short?"short":""} ${order.status==="completed"?"done":""}" data-timeline-order="${order.id}" data-timeline-job-start="${job.start}" data-timeline-job-end="${job.end}" data-timeline-job-room="${esc(room)}" aria-label="${esc(room)}，${scheduleClock(job.start)}至${scheduleClock(job.end)}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span class="mobile-timeline-job-label">${esc(room)}</span></span>`
   }).join("");
   const tag=canInteract?"button":"div",type=canInteract?' type="button"':"";
   const data=` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-person-name="${esc(item.person.name)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`;
