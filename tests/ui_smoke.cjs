@@ -977,16 +977,14 @@ async function auditMobileAccount(page, profile) {
     requestDirty = false;
     renderApp();
   });
-  await admin.getByText("还没有可下单的任务", { exact: true }).waitFor();
-  if (await admin.locator(".req-form,#placeOrder").count() || await admin.locator('[data-request-config="任务分类与工时"]').count() !== 1) {
-    throw new Error("管理员缺少任务规则时仍显示可提交的下单表单");
+  await admin.locator("#requestTask").waitFor();
+  if (await admin.locator("#requestTask").inputValue() !== "__custom__" ||
+      !await admin.locator("#requestTaskCustom").isVisible() ||
+      !await admin.locator("#placeOrder").isVisible()) {
+    throw new Error("没有预设任务时未自动进入自定义任务下单");
   }
   await auditAccessibility(admin, "admin/mobile/request/empty-tasks");
   await auditMobileLayout(admin, "admin/mobile/request/empty-tasks");
-  await admin.evaluate(() => { state.sla = []; requestDirty = false; renderApp(); });
-  await admin.locator('[data-request-config="任务分类与工时"]').click();
-  await admin.getByRole("heading", { level: 1, name: "配置" }).waitFor();
-  if (await admin.locator("#settingsSectionSelect").inputValue() !== "任务分类与工时") throw new Error("空任务引导未打开任务规则配置");
   await admin.evaluate(() => load());
   await admin.evaluate(() => navigatePage("overview"));
   await admin.locator(".schedule-mobile .three-day-agenda").waitFor();
@@ -1129,6 +1127,12 @@ async function auditMobileAccount(page, profile) {
   await admin.waitForFunction(id => !state.groups.some(group => Number(group.id) === id), Number(temporaryGroupId));
   await admin.locator("#settingsSectionSelect").selectOption("规则库");
   await admin.getByRole("heading", { level: 2, name: "规则库" }).waitFor();
+  const ruleLibraryText = await admin.locator(".settings-wrap").innerText();
+  if (!ruleLibraryText.includes("每单可填 10–720 分钟") ||
+      !ruleLibraryText.includes("超过 4 小时由管理员或本组组长审核") ||
+      ruleLibraryText.includes("不能在下单时拉长")) {
+    throw new Error("规则库仍显示与自定义时长或超长审核冲突的旧规则");
+  }
   if (new URL(admin.url()).searchParams.get("section") !== "规则库") throw new Error("手机配置分类未写入 URL");
   await admin.reload({ waitUntil: "networkidle" });
   if (await admin.locator("#settingsSectionSelect").inputValue() !== "规则库") throw new Error("刷新后手机配置分类丢失");
