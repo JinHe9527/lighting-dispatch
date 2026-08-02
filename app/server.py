@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802x"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802y"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -327,6 +327,27 @@ def init_db():
             )
         conn.execute("UPDATE settings SET v='1' WHERE k='bootstrap_used'")
     business.migrate(conn)
+    # 账号角色决定唯一的数据作用域，清理旧版本留下的跨角色字段。
+    conn.execute(
+        """UPDATE users
+           SET team_id=NULL,read_only=0
+           WHERE role='staff'"""
+    )
+    conn.execute(
+        """UPDATE users
+           SET grp='',lead=0,intern=0,read_only=0,status='off',task=''
+           WHERE role='team'"""
+    )
+    conn.execute(
+        """UPDATE users
+           SET team_id=NULL,grp='',lead=0,intern=0,status='off',task=''
+           WHERE role='admin'"""
+    )
+    conn.execute(
+        """UPDATE users
+           SET approved=0
+           WHERE role='team' AND approved=1 AND blocked=0 AND team_id IS NULL"""
+    )
     conn.execute(
         """UPDATE notification_outbox
            SET status='retry',available_at=?,claimed_at='',

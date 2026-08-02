@@ -457,6 +457,18 @@ async function auditMobileAccount(page, profile) {
   await admin.locator('[data-page="crew"]').first().click();
   await admin.getByText("工作人员与班次", { exact: true }).waitFor();
   if (await admin.getByRole("heading", { name: "账号与使用身份", exact: true }).count()) throw new Error("工作人员页面仍混入账号设置内容");
+  const rosterScopeEditors = await admin.evaluate(() => ({
+    identity: document.querySelectorAll('.crew-tbl [data-identity]').length,
+    group: document.querySelectorAll('.crew-tbl [data-field="grp"]').length,
+  }));
+  if (rosterScopeEditors.identity || rosterScopeEditors.group) throw new Error(`工作人员页面仍能重复修改账号身份或组别：${JSON.stringify(rosterScopeEditors)}`);
+  await admin.evaluate(() => {
+    const source=state.users.find(user=>user.role==='staff');
+    state.users.push({...source,open_id:'audit:pending-staff',name:'待授权人员',approved:0,blocked:0});
+    renderApp();
+  });
+  if (await admin.locator('[data-crew-id="audit:pending-staff"]').count()) throw new Error("未授权工作人员仍出现在排班人员表");
+  await admin.evaluate(() => { state.users=state.users.filter(user=>user.open_id!=='audit:pending-staff');renderApp() });
   await admin.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await admin.locator('[data-crew-section="roster"]').focus();
   await admin.keyboard.press("ArrowRight");

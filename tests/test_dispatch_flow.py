@@ -196,6 +196,61 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(lead_account["lead"], 1)
         self.assertEqual(lead_account["read_only"], 0)
 
+    def test_init_db_normalizes_legacy_account_scope_fields(self):
+        conn = server.db()
+        conn.executemany(
+            """INSERT INTO users(
+                   open_id,name,role,grp,lead,intern,team_id,approved,blocked,
+                   read_only,status,task,created_at,last_login
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                (
+                    "legacy:admin", "旧管理员", "admin", "视觉组", 1, 1,
+                    self.team_row["id"], 1, 0, 0, "free", "旧任务",
+                    server.now_iso(), server.now_iso(),
+                ),
+                (
+                    "legacy:team", "旧团队账号", "team", "灯光组", 1, 1,
+                    None, 1, 0, 1, "free", "旧任务",
+                    server.now_iso(), server.now_iso(),
+                ),
+                (
+                    "legacy:staff", "旧工作人员", "staff", "灯光组", 0, 0,
+                    self.team_row["id"], 1, 0, 1, "free", "",
+                    server.now_iso(), server.now_iso(),
+                ),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        server.init_db()
+
+        admin = self.user("legacy:admin")
+        self.assertEqual(admin["grp"], "")
+        self.assertEqual(admin["lead"], 0)
+        self.assertEqual(admin["intern"], 0)
+        self.assertIsNone(admin["team_id"])
+        self.assertEqual(admin["status"], "off")
+        self.assertEqual(admin["task"], "")
+
+        team = self.user("legacy:team")
+        self.assertEqual(team["grp"], "")
+        self.assertEqual(team["lead"], 0)
+        self.assertEqual(team["intern"], 0)
+        self.assertEqual(team["read_only"], 0)
+        self.assertEqual(team["status"], "off")
+        self.assertEqual(team["task"], "")
+        self.assertEqual(team["approved"], 0)
+
+        staff = self.user("legacy:staff")
+        self.assertIsNone(staff["team_id"])
+        self.assertEqual(staff["read_only"], 0)
+        conn = server.db()
+        conn.execute("DELETE FROM users WHERE open_id LIKE 'legacy:%'")
+        conn.commit()
+        conn.close()
+
     def test_management_read_only_sees_admin_state_without_write_permission(self):
         self.assertEqual(
             server.do_save(
