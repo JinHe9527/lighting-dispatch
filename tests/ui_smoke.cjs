@@ -678,6 +678,7 @@ async function auditMobileAccount(page, profile) {
       actionsSameRow: Boolean(groupTabs && headerActions.length === 3 && Math.abs(Math.min(...headerActions.map(rect => rect.top)) - groupTabs.top) <= 2 && groupTabs.right <= Math.min(...headerActions.map(rect => rect.left)) + 1),
       groupTabsFullyVisible: Boolean(groupTabs && document.querySelector(".ws-dash .gtabs").scrollWidth <= document.querySelector(".ws-dash .gtabs").clientWidth + 1),
       nowLayers: mobile.querySelectorAll(".mobile-day-section:not([hidden]) .mobile-timeline-now-layer").length,
+      nowLayersByDate: sections.map(section => ({ date: section.dataset.mobileDaySection, count: section.querySelectorAll(".mobile-timeline-now-layer").length })),
       nowLabel: mobile.querySelector(".mobile-day-section:not([hidden]) .mobile-timeline-now-label")?.textContent,
       rowNowLines: mobile.querySelectorAll(".mobile-day-section:not([hidden]) .mobile-timeline-row .mobile-timeline-now").length,
       continuousNowLine: Boolean(visibleTimeline && timelineAxis && nowLine && Math.abs(nowLine.getBoundingClientRect().height - (visibleTimeline.getBoundingClientRect().height - timelineAxis.getBoundingClientRect().height)) <= 1),
@@ -693,6 +694,7 @@ async function auditMobileAccount(page, profile) {
       dayWorktable.axisTicks < 4 || dayWorktable.duplicateHeaders || dayWorktable.legacyMatrix ||
       dayWorktable.topbarHeight > 2 || dayWorktable.headerActions !== 3 || !dayWorktable.actionsSameRow || !dayWorktable.groupTabsFullyVisible ||
       dayWorktable.nowLayers !== 1 || !/^当前 \d{2}:\d{2}$/.test(dayWorktable.nowLabel || "") || dayWorktable.rowNowLines !== 0 || !dayWorktable.continuousNowLine ||
+      dayWorktable.nowLayersByDate.some((item,index) => item.count !== (index===0?1:0)) ||
       !dayWorktable.noHorizontalOverflow) {
     throw new Error(`手机首页没有完整呈现紧凑的连续三日人员时间轴：${JSON.stringify(dayWorktable)}`);
   }
@@ -727,8 +729,8 @@ async function auditMobileAccount(page, profile) {
     legacyTaskTime: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
   }));
   if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
-      tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers !== 1 ||
-      !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "") || !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 28 || tomorrowJump.taskRangeHeight !== 4 || tomorrowJump.legacyTaskTime) {
+      tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers || tomorrowJump.nowLabel ||
+      !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 28 || tomorrowJump.taskRangeHeight !== 4 || tomorrowJump.legacyTaskTime) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
   }
   const taskPointer = admin.locator('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job').first();

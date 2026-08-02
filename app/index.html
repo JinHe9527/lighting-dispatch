@@ -1320,7 +1320,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802r";
+const APP_VERSION="v0802s";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2441,10 +2441,10 @@ function mobileTimelineRow(item,dateStr,range){
   return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}</${tag}></div>`
 }
 function mobileDaySection(d,dateStr,index){
-  const roster=dayRoster(d,dateStr),referenceMinute=scheduleMinute(scheduleClock(nowMinutes())),range=mobileTimelineRange(roster,referenceMinute);
+  const roster=dayRoster(d,dateStr),referenceMinute=roster.today?scheduleMinute(scheduleClock(nowMinutes())):null,range=mobileTimelineRange(roster,referenceMinute);
   const pending=roster.pending.length?`<div class="mobile-pending"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
   const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range)).join("")||empty("users","本组暂无可排班成员");
-  const nowLeft=mobileTimelinePercent(referenceMinute,range).toFixed(3),nowLine=`<div class="mobile-timeline-now-layer" style="--left:${nowLeft}%" aria-hidden="true"><span class="mobile-timeline-now"></span><span class="mobile-timeline-now-label">当前 ${scheduleClock(referenceMinute)}</span></div>`;
+  const nowLine=referenceMinute==null?"":`<div class="mobile-timeline-now-layer" style="--left:${mobileTimelinePercent(referenceMinute,range).toFixed(3)}%" aria-hidden="true"><span class="mobile-timeline-now"></span><span class="mobile-timeline-now-label">当前 ${scheduleClock(referenceMinute)}</span></div>`;
   const hoverLine=`<div class="mobile-timeline-hover-layer" data-timeline-hover-layer hidden aria-hidden="true"><span class="mobile-timeline-hover-line"></span><span class="mobile-timeline-hover-label"></span></div>`;
   return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}${nowLine}${hoverLine}</div></section>`
 }
