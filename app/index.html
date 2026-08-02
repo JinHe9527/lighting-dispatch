@@ -788,38 +788,37 @@ button.day-person-tile:hover{background:var(--fill)}
 .three-day-nav strong{font-size:13px}
 .three-day-nav span{color:var(--muted);font:10px var(--mono)}
 .three-day-nav small{max-width:100%;color:var(--dim);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mobile-day-section{scroll-margin-top:78px;border-bottom:8px solid var(--surface-2);background:var(--surface)}
-.mobile-day-section:last-child{border-bottom:0}
-.mobile-day-head{min-height:52px;padding:7px 10px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px}
-.mobile-day-head>div{min-width:0}
-.mobile-day-head strong{display:block;font-size:15px}
-.mobile-day-head span{display:block;margin-top:1px;color:var(--muted);font-size:10px}
-.mobile-day-head .icon-btn{width:36px;height:36px;flex:none}
+.mobile-day-section{background:var(--surface)}
+.mobile-day-section[hidden]{display:none}
 .mobile-pending{padding:6px 10px;border-bottom:1px solid color-mix(in srgb,var(--orange) 34%,var(--line));display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;background:color-mix(in srgb,var(--orange) 7%,var(--surface))}
 .mobile-pending::-webkit-scrollbar{display:none}
 .mobile-pending>strong{display:flex;align-items:center;gap:5px;color:var(--orange-text);font-size:11px;white-space:nowrap;flex:none}
 .mobile-pending>strong .icon{width:14px;height:14px}
 .mobile-pending>button{min-height:36px;padding:5px 8px;border:1px solid color-mix(in srgb,var(--orange) 30%,var(--line));background:var(--surface);color:var(--text);font-size:10px;white-space:nowrap;flex:none}
-.mobile-person-list{display:flex;flex-direction:column}
-.mobile-roster-row{--row-status:var(--gray);position:relative;min-width:0;min-height:70px;padding:8px 9px 8px 14px;border-bottom:1px solid var(--line-soft);display:grid;grid-template-columns:76px minmax(0,1fr) 44px;align-items:center;gap:8px;background:var(--surface)}
-.mobile-roster-row:last-child{border-bottom:0}
-.mobile-roster-row::before{content:"";position:absolute;left:7px;top:15px;width:3px;height:calc(100% - 30px);border-radius:2px;background:var(--row-status)}
-.mobile-roster-row.free{--row-status:var(--green)}
-.mobile-roster-row.busy{--row-status:var(--orange)}
-.mobile-person-meta{min-width:0}
-.mobile-person-meta strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
-.mobile-person-meta>span{display:flex;align-items:center;gap:4px;margin-top:3px;color:color-mix(in srgb,var(--row-status) 72%,var(--text));font-size:10px;font-weight:650;white-space:nowrap}
-.mobile-person-meta .status-dot{width:6px;height:6px;background:var(--row-status)}
-.mobile-person-plan{width:44px;height:44px;border:0;background:transparent;color:var(--accent);display:grid;place-items:center}
-.mobile-person-plan:hover{background:var(--fill)}
-.mobile-person-plan .icon{width:17px;height:17px}
-.mobile-person-work{min-width:0;display:flex;flex-direction:column;gap:4px}
-.mobile-availability{min-width:0;display:block;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mobile-availability small{display:block;margin-top:2px;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mobile-job{width:100%;min-height:44px;padding:5px 7px;border:1px solid var(--line-soft);border-left:3px solid var(--gc);background:color-mix(in srgb,var(--gc) 9%,var(--surface));color:var(--text);text-align:left;display:grid;grid-template-columns:62px minmax(0,1fr);align-items:center;gap:7px}
-.mobile-job time{font:600 10px var(--mono);color:color-mix(in srgb,var(--gc) 70%,var(--text));white-space:nowrap}
-.mobile-job span{min-width:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mobile-job.done{opacity:.55;border-left-color:var(--green)}
+.mobile-timeline{--name-col:70px;min-width:0;background:var(--surface)}
+.mobile-timeline-axis{height:32px;display:grid;grid-template-columns:var(--name-col) minmax(0,1fr);align-items:end;border-bottom:1px solid var(--line)}
+.mobile-timeline-axis>span{padding:0 6px 6px;color:var(--muted);font-size:10px;font-weight:650}
+.mobile-timeline-scale{position:relative;height:100%;min-width:0;margin-right:8px}
+.mobile-timeline-scale span{position:absolute;bottom:6px;color:var(--dim);font:9px var(--mono);transform:translateX(-50%)}
+.mobile-timeline-scale span:first-child{transform:none}
+.mobile-timeline-scale span:last-child{transform:translateX(-100%)}
+.mobile-timeline-row{--row-status:var(--gray);min-width:0;height:58px;display:grid;grid-template-columns:var(--name-col) minmax(0,1fr);align-items:center;border-bottom:1px solid var(--line-soft)}
+.mobile-timeline-row:last-child{border-bottom:0}
+.mobile-timeline-row.free{--row-status:var(--green)}
+.mobile-timeline-row.busy{--row-status:var(--orange)}
+.mobile-timeline-who{min-width:0;padding:0 6px 0 10px}
+.mobile-timeline-who strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.mobile-timeline-who span{display:flex;align-items:center;gap:4px;margin-top:4px;overflow:hidden;color:color-mix(in srgb,var(--row-status) 72%,var(--text));font-size:9px;font-weight:650;white-space:nowrap}
+.mobile-timeline-who .status-dot{width:6px;height:6px;background:var(--row-status)}
+.mobile-timeline-track{position:relative;width:calc(100% - 8px);height:44px;margin-right:8px;overflow:hidden;border:0;border-radius:8px;background:repeating-linear-gradient(to right,transparent 0,transparent calc(25% - 1px),var(--line-soft) calc(25% - 1px),var(--line-soft) 25%),var(--fill);color:var(--text);text-align:left}
+button.mobile-timeline-track{cursor:crosshair}
+button.mobile-timeline-track:hover{background-color:var(--fill-2)}
+.mobile-timeline-shift{position:absolute;top:7px;bottom:7px;left:var(--left);width:var(--width);border:1px solid color-mix(in srgb,var(--green) 36%,transparent);border-radius:5px;background:color-mix(in srgb,var(--green) 18%,transparent);pointer-events:none}
+.mobile-timeline-job{position:absolute;z-index:2;top:4px;bottom:4px;left:var(--left);width:max(4px,var(--width));min-width:0;border-left:2px solid color-mix(in srgb,var(--gc) 75%,var(--text));border-radius:5px;background:color-mix(in srgb,var(--gc) 72%,#111);box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none;overflow:hidden}
+.mobile-timeline-job span{display:block;padding:5px 4px 0;color:#fff;font-size:9px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobile-timeline-job small{display:block;padding:2px 4px;color:rgba(255,255,255,.82);font:8px var(--mono);white-space:nowrap}
+.mobile-timeline-job.done{opacity:.48;filter:saturate(.45)}
+.mobile-timeline-now{position:absolute;z-index:3;top:0;bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent);pointer-events:none}
 .schedule-desktop .day-status-board{margin-bottom:10px}
 .schedule-modal{max-width:620px}
 .schedule-form{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
@@ -1029,7 +1028,13 @@ button.dp:hover{border-color:var(--line)}
   .schedule-day .calendar-jump{position:absolute;inset:0;width:44px;height:44px;padding:0;opacity:0;cursor:pointer}
   .schedule-day .seg{grid-column:2;height:44px}
   .schedule-day .schedule-action-group{grid-column:3}
-  .ws-dash{height:calc(100dvh - 56px - env(safe-area-inset-top));padding:12px max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+  .app-shell:has(.ws-dash) .topbar{position:absolute;inset:0 0 auto;height:0;padding:0;border:0;overflow:visible}
+  .app-shell:has(.ws-dash) .topbar .page-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .app-shell:has(.ws-dash) .topbar .top-actions,.app-shell:has(.ws-dash) .topbar .tb-tabs{display:none}
+  .app-shell.offline:has(.ws-dash) .topbar .top-actions{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(96px + env(safe-area-inset-bottom));z-index:60;display:flex}
+  .app-shell.offline:has(.ws-dash) .topbar .top-actions>*{display:none}
+  .app-shell.offline:has(.ws-dash) .topbar #refresh{display:grid}
+  .ws-dash{height:100dvh;padding:max(10px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
   .ws-dash .gtabs{margin-bottom:10px}
   .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
   .dash::-webkit-scrollbar{display:none}
@@ -1040,25 +1045,18 @@ button.dp:hover{border-color:var(--line)}
   .ws-dash .tl-panel .panel-head{min-height:52px}
   .ws-dash .tl-panel .panel-head p{display:none}
   .ws-dash .schedule-mobile{flex:1;min-height:0;overflow-y:auto}
-  .three-day-nav{padding:6px;gap:5px}
-  .three-day-nav button{min-height:64px;border-radius:10px}
-  .three-day-nav strong{font-size:14px}
-  .three-day-nav span{font-size:11px}
-  .three-day-nav small{font-size:10px}
-  .mobile-day-section{scroll-margin-top:76px}
-  .mobile-day-head{min-height:56px;padding:8px 12px}
-  .mobile-day-head strong{font-size:16px}
-  .mobile-day-head span{font-size:11px}
+  .three-day-nav{padding:5px 6px;gap:5px}
+  .three-day-nav button{min-height:54px;padding:5px;border-radius:9px}
+  .three-day-nav strong{font-size:13px}
+  .three-day-nav span{font-size:10px}
+  .three-day-nav small{font-size:9px}
   .mobile-pending{padding:6px 12px}
   .mobile-pending>button{min-height:44px;font-size:11px}
-  .mobile-roster-row{min-height:76px;padding:9px 10px 9px 16px;grid-template-columns:78px minmax(0,1fr) 44px;gap:8px}
-  .mobile-person-meta strong{font-size:14px}
-  .mobile-person-meta span{font-size:11px}
-  .mobile-availability{font-size:13px}
-  .mobile-availability small{font-size:11px}
-  .mobile-job{min-height:46px;padding:6px 8px;grid-template-columns:70px minmax(0,1fr);gap:8px;border-radius:8px}
-  .mobile-job time{font-size:11px}
-  .mobile-job span{font-size:12px}
+  .mobile-timeline{--name-col:72px}
+  .mobile-timeline-axis{height:30px}
+  .mobile-timeline-row{height:58px}
+  .mobile-timeline-who strong{font-size:14px}
+  .mobile-timeline-who span{font-size:10px}
   .planner-range{display:flex;flex-direction:column;overflow-y:auto;padding:0;background:transparent;gap:10px}
   .planner-calendar,.planner-inspector,.workload-panel{flex:none;border-radius:14px}
   .planner-calendar{padding:8px;overflow:visible}
@@ -1191,7 +1189,7 @@ button.dp:hover{border-color:var(--line)}
   body.keyboard-open .req-go{position:static}
   body.keyboard-open .toast{bottom:max(12px,env(safe-area-inset-bottom))}
 }
-@media(max-width:420px){.seg-date{display:none}}
+@media(max-width:420px){.seg-date{display:none}.mobile-timeline{--name-col:64px}.mobile-timeline-who{padding-left:8px}.mobile-timeline-who strong{font-size:13px}}
 @media(max-width:900px) and (max-height:500px){
   html{scroll-padding-bottom:calc(64px + env(safe-area-inset-bottom))}
   .workspace{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
@@ -1199,7 +1197,7 @@ button.dp:hover{border-color:var(--line)}
   .mobile-nav .nav-btn{height:44px;flex-direction:row;gap:6px;border-radius:13px}
   .mobile-nav .nav-btn .icon{width:18px;height:18px}
   .toast{bottom:calc(68px + env(safe-area-inset-bottom))}
-  .ws-dash{height:auto;min-height:calc(100dvh - 56px - env(safe-area-inset-top));overflow:visible}
+  .ws-dash{height:auto;min-height:100dvh;overflow:visible}
   .ws-dash #view,.ws-dash .tl-panel{display:block}
   .ws-dash .schedule-mobile{overflow:visible;max-height:none}
   .tl-panel .panel-head{display:flex;flex-wrap:nowrap;align-items:center}
@@ -1236,7 +1234,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802k";
+const APP_VERSION="v0802l";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2266,36 +2264,86 @@ function mobileDateTitle(dateStr){
   if(dateStr===dateAdd(todayStr(),2))return"后天";
   return weekdayLabel(dateStr)
 }
-function mobilePersonRow(item,dateStr,grp){
-  const canManage=Boolean(me.role==="admin"||me.lead);
-  const canPlan=canManage&&dateStr>=todayStr()&&item.assignment&&!item.assignment.is_off&&!item.absence;
-  const jobs=[...item.jobs].sort((a,b)=>a.start-b.start||a.order.id-b.order.id);
-  const plan=canPlan?`<button class="mobile-person-plan" data-plan-person="${esc(item.person.open_id)}" data-plan-date="${dateStr}" aria-label="给${esc(item.person.name)}安排${esc(fmtDateCn(dateStr))}的任务" title="安排任务">${icon("plus",true)}</button>`:`<span aria-hidden="true"></span>`;
-  const shift=item.start!=null&&item.end!=null?`班次 ${scheduleClock(item.start)}–${scheduleClock(item.end)}`:item.detail;
-  const work=jobs.length?jobs.map(job=>{
-    const order=job.order;
-    return`<button class="mobile-job ${order.status==="completed"?"done":""}" style="--gc:${groupColor(grp)}" ${scheduleDetailAttrs(order)} aria-label="查看${esc(item.person.name)}在${esc(order.arrive)}到${scheduleClock(job.end)}的任务：${esc(order.room||order.team)}，${esc(order.task_type)}"><time>${esc(order.arrive||"--:--")}–${scheduleClock(job.end)}</time><span>${esc(order.room||order.team)} · ${esc(order.task_type)}</span></button>`
-  }).join(""):`<span class="mobile-availability">${esc(item.detail)}<small>${esc(shift)}</small></span>`;
-  return`<article class="mobile-roster-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-person-meta"><strong>${esc(item.person.name)}${item.person.lead?` <span class="day-lead">组长</span>`:""}</strong><span><i class="status-dot"></i>${esc(item.label)}</span></div><div class="mobile-person-work">${work}</div>${plan}</article>`
+const TIMELINE_COLORS=["#0A84FF","#BF5AF2","#FF453A","#FF9F0A","#30D158","#64D2FF","#FF375F","#5E5CE6"];
+function timelineTaskColor(order){
+  const key=String(order.room||order.team||order.id),hash=[...key].reduce((sum,char)=>(sum*31+char.charCodeAt(0))>>>0,0);
+  return TIMELINE_COLORS[hash%TIMELINE_COLORS.length]
 }
-function mobileDaySection(d,dateStr){
-  const roster=dayRoster(d,dateStr);
-  const rank=roster.today?{free:0,busy:1,away:2}:{busy:0,free:1,away:2};
-  const people=[...roster.people].sort((a,b)=>rank[a.kind]-rank[b.kind]||(b.person.lead?1:0)-(a.person.lead?1:0)||String(a.person.name).localeCompare(String(b.person.name)));
-  const free=people.filter(item=>item.kind==="free").length,busy=people.filter(item=>item.kind==="busy").length,away=people.length-free-busy;
-  const canManage=Boolean(me.role==="admin"||me.lead)&&dateStr>=todayStr();
-  const plan=canManage?`<button class="icon-btn" data-plan-day="${dateStr}" aria-label="安排${esc(fmtDateCn(dateStr))}的任务" title="安排任务">${icon("plus",true)}</button>`:"";
+function timelineRoomLabel(order){
+  const room=String(order.room||"").trim(),number=room.match(/\d+/);
+  if(number)return`${number[0]}号`;
+  return room.replace(/直播间/g,"").trim()||String(order.team||"任务")
+}
+function mobileTimelineRange(roster){
+  let first=480,last=1440;
+  roster.people.forEach(item=>{
+    if(item.start!=null)first=Math.min(first,item.start);
+    if(item.end!=null)last=Math.max(last,item.end);
+    item.jobs.forEach(job=>{first=Math.min(first,job.start);last=Math.max(last,job.end)})
+  });
+  first=Math.max(300,Math.floor(first/60)*60);
+  last=Math.min(1740,Math.ceil(last/60)*60);
+  return{first,last:Math.max(last,first+720)}
+}
+function mobileTimelineHasGap(item,now){
+  if(item.start==null||item.end==null||item.absence||item.assignment?.is_off)return false;
+  let cursor=Math.max(item.start,now==null?item.start:now);
+  const jobs=[...item.jobs].sort((a,b)=>a.start-b.start);
+  for(const job of jobs){
+    if(job.end<=cursor)continue;
+    if(job.start-cursor>=15)return true;
+    cursor=Math.max(cursor,job.end)
+  }
+  return item.end-cursor>=15
+}
+function mobileTimelinePercent(minute,range){return Math.max(0,Math.min(100,(minute-range.first)/(range.last-range.first)*100))}
+function mobileTimelinePosition(start,end,range){
+  const left=mobileTimelinePercent(Math.max(start,range.first),range);
+  const right=mobileTimelinePercent(Math.min(end,range.last),range);
+  return`--left:${left.toFixed(3)}%;--width:${Math.max(0,right-left).toFixed(3)}%`
+}
+function mobileTimelineLabel(minute){
+  if(minute===1440)return"24";
+  return String(Math.floor((minute%1440)/60)).padStart(2,"0")
+}
+function mobileTimelineAxis(range){
+  const ticks=[range.first];
+  for(let minute=Math.ceil(range.first/240)*240;minute<range.last;minute+=240)if(minute>range.first)ticks.push(minute);
+  if(ticks[ticks.length-1]!==range.last)ticks.push(range.last);
+  return`<div class="mobile-timeline-axis"><span>人员</span><div class="mobile-timeline-scale">${ticks.map(minute=>`<span style="left:${mobileTimelinePercent(minute,range).toFixed(3)}%">${mobileTimelineLabel(minute)}</span>`).join("")}</div></div>`
+}
+function mobileTimelineRow(item,dateStr,range,now){
+  const jobs=[...item.jobs].sort((a,b)=>a.start-b.start||a.order.id-b.order.id);
+  const canManage=Boolean(me.role==="admin"||me.lead);
+  const canPlan=canManage&&dateStr>=todayStr()&&item.assignment&&!item.assignment.is_off&&!item.absence&&item.start!=null&&item.end!=null;
+  const canInteract=canPlan||jobs.length;
+  const jobData=jobs.map(job=>`${job.order.id}:${job.start}:${job.end}`).join(",");
+  const shift=item.start!=null&&item.end!=null&&!item.absence&&!item.assignment?.is_off?`<span class="mobile-timeline-shift" style="${mobileTimelinePosition(item.start,item.end,range)}"></span>`:"";
+  const blocks=jobs.map(job=>{
+    const order=job.order;
+    if(job.end<=range.first||job.start>=range.last)return"";
+    return`<span class="mobile-timeline-job ${order.status==="completed"?"done":""}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span>${esc(timelineRoomLabel(order))}</span><small>${esc(order.arrive||"--:--")}–${scheduleClock(job.end)}</small></span>`
+  }).join("");
+  const nowLine=dateStr===todayStr()&&now!=null&&range.first<=now&&now<=range.last?`<span class="mobile-timeline-now" style="--left:${mobileTimelinePercent(now,range).toFixed(3)}%"></span>`:"";
+  const tag=canInteract?"button":"div",type=canInteract?' type="button"':"";
+  const data=canInteract?` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`:"";
+  const firstJob=jobs[0]?.order;
+  const status=jobs.length?timelineRoomLabel(firstJob):item.kind==="free"?"可派":item.label;
+  return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}${nowLine}</${tag}></div>`
+}
+function mobileDaySection(d,dateStr,index){
+  const roster=dayRoster(d,dateStr),range=mobileTimelineRange(roster);
   const pending=roster.pending.length?`<div class="mobile-pending"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
-  const rows=people.map(item=>mobilePersonRow(item,dateStr,roster.grp)).join("")||empty("users","本组暂无可排班成员");
-  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"><header class="mobile-day-head"><div><strong>${esc(mobileDateTitle(dateStr))} · ${Number(dateStr.slice(5,7))}月${Number(dateStr.slice(8,10))}日</strong><span>${weekdayLabel(dateStr)} · ${busy} 人有任务 · ${free} 人可派 · ${away} 人不在岗</span></div>${plan}</header>${pending}<div class="mobile-person-list">${rows}</div></section>`
+  const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range,roster.now)).join("")||empty("users","本组暂无可排班成员");
+  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}</div></section>`
 }
 function mobileThreeDayAgenda(d,dateStr){
   const dates=[dateStr,dateAdd(dateStr,1),dateAdd(dateStr,2)];
   const nav=dates.map((day,index)=>{
-    const roster=dayRoster(d,day),free=roster.people.filter(item=>item.kind==="free").length;
-    return`<button class="${index===0?"active":""}" data-mobile-day="${day}" aria-pressed="${index===0?"true":"false"}"><strong>${esc(mobileDateTitle(day))}</strong><span>${day.slice(5)} ${weekdayLabel(day)}</span><small>${roster.orders.length} 任务 · ${free} 可派</small></button>`
+    const roster=dayRoster(d,day),free=roster.people.filter(item=>mobileTimelineHasGap(item,roster.today?roster.now:null)).length;
+    return`<button class="${index===0?"active":""}" data-mobile-day="${day}" aria-pressed="${index===0?"true":"false"}"><strong>${esc(mobileDateTitle(day))}</strong><span>${day.slice(5)} ${weekdayLabel(day)}</span><small>${roster.orders.length} 任务 · ${free} 有空</small></button>`
   }).join("");
-  return`<div class="three-day-agenda"><nav class="three-day-nav" aria-label="三日排班">${nav}</nav>${dates.map(day=>mobileDaySection(d,day)).join("")}</div>`
+  return`<div class="three-day-agenda"><nav class="three-day-nav" aria-label="三日排班">${nav}</nav>${dates.map((day,index)=>mobileDaySection(d,day,index)).join("")}</div>`
 }
 function schedulePanel(){
   if(!schedDate)schedDate=todayStr();
@@ -2655,8 +2703,31 @@ document.querySelectorAll("[data-mobile-day]").forEach(button=>button.onclick=()
     item.classList.toggle("active",active);
     item.setAttribute("aria-pressed",active?"true":"false")
   });
-  const section=document.querySelector(`[data-mobile-day-section="${button.dataset.mobileDay}"]`);
-  section?.scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"})
+  const date=button.dataset.mobileDay;
+  document.querySelectorAll("[data-mobile-day-section]").forEach(section=>{section.hidden=section.dataset.mobileDaySection!==date});
+  const adjust=document.querySelector("[data-schedule-edit]");
+  if(adjust){adjust.dataset.scheduleEdit=date;adjust.setAttribute("aria-label",`调整${fmtDateCn(date)}的班次可用性`)}
+  const plan=document.querySelector("[data-plan-day]");
+  if(plan){plan.dataset.planDay=date;plan.hidden=date<todayStr();plan.setAttribute("aria-label",`安排${fmtDateCn(date)}的任务`)}
+});
+document.querySelectorAll("[data-timeline-track]").forEach(track=>track.onclick=event=>{
+  const first=Number(track.dataset.timelineFirst),last=Number(track.dataset.timelineLast);
+  const shiftStart=Number(track.dataset.timelineStart),shiftEnd=Number(track.dataset.timelineEnd);
+  const jobs=String(track.dataset.timelineJobs||"").split(",").filter(Boolean).map(value=>{const [id,start,end]=value.split(":").map(Number);return{id,start,end}});
+  let minute;
+  if(event.detail===0)minute=jobs[0]?.start||shiftStart;
+  else{
+    const rect=track.getBoundingClientRect();
+    minute=first+Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width))*(last-first)
+  }
+  const job=jobs.find(item=>item.start<=minute&&minute<item.end);
+  if(job)return showDetail({dataset:{oid:String(job.id)}});
+  if(!(me.role==="admin"||me.lead))return;
+  if(!Number.isFinite(shiftStart)||!Number.isFinite(shiftEnd)||minute<shiftStart||minute>=shiftEnd){showToast("这个时间不在该人员班次内");return}
+  if(track.dataset.timelineDate===todayStr())minute=Math.max(minute,scheduleMinute(scheduleClock(nowMinutes())));
+  minute=Math.ceil(minute/15)*15;
+  if(minute>=shiftEnd){showToast("该人员今天已经下班");return}
+  openQuickOrder(track.dataset.timelinePerson,{date:track.dataset.timelineDate,at:scheduleClock(minute)})
 });
 document.querySelectorAll("[data-assign]").forEach(button=>button.onclick=()=>{
   const select=document.querySelector(`[data-assignee="${button.dataset.assign}"]`);

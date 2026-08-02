@@ -659,28 +659,53 @@ async function auditMobileAccount(page, profile) {
       dayButtons: dayButtons.length,
       daySections: sections.length,
       dates: dayButtons.map(button => button.dataset.mobileDay),
-      rowCounts: sections.map(section => section.querySelectorAll(".mobile-roster-row").length),
+      rowCounts: sections.map(section => section.querySelectorAll(".mobile-timeline-row").length),
+      trackCounts: sections.map(section => section.querySelectorAll(".mobile-timeline-track").length),
+      visibleSections: sections.filter(section => !section.hidden).length,
       activeDate: dayButtons.find(button => button.classList.contains("active"))?.dataset.mobileDay,
       labels: dayButtons.map(button => button.querySelector("strong")?.textContent),
-      jobs: mobile.querySelectorAll(".mobile-job").length,
-      legacyMatrix: mobile.querySelectorAll(".day-matrix,.day-status-board,.agenda-summary,.agenda-person").length,
+      jobs: mobile.querySelectorAll(".mobile-timeline-job").length,
+      axisTicks: mobile.querySelectorAll(".mobile-day-section:not([hidden]) .mobile-timeline-scale span").length,
+      duplicateHeaders: mobile.querySelectorAll(".mobile-day-head,.mobile-person-list").length,
+      legacyMatrix: mobile.querySelectorAll(".day-matrix,.day-status-board,.agenda-summary,.agenda-person,.mobile-roster-row").length,
+      topbarHeight: document.querySelector(".topbar")?.getBoundingClientRect().height || 0,
       noHorizontalOverflow: mobile.scrollWidth <= mobile.clientWidth + 1,
       expectedDates: dates,
     };
   });
   if (dayWorktable.dayButtons !== 3 || dayWorktable.daySections !== 3 ||
       dayWorktable.rowCounts.some(count => count !== dayWorktable.expectedPeople) ||
+      dayWorktable.trackCounts.some(count => count !== dayWorktable.expectedPeople) || dayWorktable.visibleSections !== 1 ||
       dayWorktable.dates.join("|") !== dayWorktable.expectedDates.join("|") ||
       dayWorktable.activeDate !== dayWorktable.expectedDates[0] || dayWorktable.jobs < 1 ||
-      dayWorktable.legacyMatrix || !dayWorktable.noHorizontalOverflow) {
-    throw new Error(`手机首页没有完整呈现连续三日人员任务清单：${JSON.stringify(dayWorktable)}`);
+      dayWorktable.axisTicks < 4 || dayWorktable.duplicateHeaders || dayWorktable.legacyMatrix ||
+      dayWorktable.topbarHeight > 2 || !dayWorktable.noHorizontalOverflow) {
+    throw new Error(`手机首页没有完整呈现紧凑的连续三日人员时间轴：${JSON.stringify(dayWorktable)}`);
   }
   await admin.locator('[data-mobile-day]').nth(1).click();
   const tomorrowJump = await admin.evaluate(() => ({
     active: document.querySelector('[data-mobile-day].active')?.dataset.mobileDay,
     target: document.querySelectorAll('[data-mobile-day-section]')[1]?.dataset.mobileDaySection,
+    visible: [...document.querySelectorAll('[data-mobile-day-section]')].filter(section => !section.hidden).map(section => section.dataset.mobileDaySection),
+    adjustDate: document.querySelector('[data-schedule-edit]')?.dataset.scheduleEdit,
+    planDate: document.querySelector('[data-plan-day]')?.dataset.planDay,
   }));
-  if (tomorrowJump.active !== tomorrowJump.target) throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
+  if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
+      tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target) {
+    throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
+  }
+  const timelineOrderId = await admin.evaluate(() => {
+    const track = document.querySelector('[data-mobile-day-section]:not([hidden]) [data-timeline-track][data-timeline-jobs]:not([data-timeline-jobs=""])');
+    if (!track) return 0;
+    const [id, start, end] = track.dataset.timelineJobs.split(",")[0].split(":").map(Number);
+    const first = Number(track.dataset.timelineFirst), last = Number(track.dataset.timelineLast), rect = track.getBoundingClientRect();
+    const minute = (start + end) / 2;
+    track.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1, clientX: rect.left + (minute - first) / (last - first) * rect.width, clientY: rect.top + rect.height / 2 }));
+    return id;
+  });
+  if (!timelineOrderId) throw new Error("手机时间轴没有可点击的任务占用块");
+  await admin.locator(".modal-mask").waitFor();
+  await admin.locator(".modal-mask [data-close]").click();
   if (await admin.locator(".mobile-nav .nav-btn").count() !== 4) throw new Error("管理员手机底栏不是 4 个主入口");
   if (await admin.locator(".schedule-desktop").isVisible()) throw new Error("手机端仍显示压缩的桌面排班网格");
   const safeAreaCoverage = await admin.evaluate(() => {
@@ -1202,7 +1227,7 @@ async function auditMobileAccount(page, profile) {
   await lead.getByText("当天排班已保存，相关人员会收到通知", { exact: true }).waitFor();
   await lead.locator(".schedule-modal").waitFor({ state: "detached" });
   await lead.waitForFunction(date => !(state.shift_overrides || []).some(entry => entry.worker_id === "test:staff" && entry.work_date === date), scheduleTestDate);
-  const futurePlanButton = lead.locator('.schedule-mobile [data-plan-person="test:staff"]').first();
+  const futurePlanButton = lead.locator('.schedule-mobile [data-mobile-day-section]:not([hidden]) [data-timeline-track][data-timeline-person="test:staff"]').first();
   await futurePlanButton.waitFor();
   await futurePlanButton.click();
   if (await lead.locator("#qsDate").inputValue() !== scheduleTestDate) {
