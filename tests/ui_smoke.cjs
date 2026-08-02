@@ -705,10 +705,13 @@ async function auditMobileAccount(page, profile) {
     planDate: document.querySelector('[data-plan-day]')?.dataset.planDay,
     nowLayers: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-layer').length,
     nowLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-now-label')?.textContent,
+    taskLabel: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.textContent,
+    taskLabelWidth: document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job-label')?.getBoundingClientRect().width || 0,
+    legacyTaskTime: document.querySelectorAll('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job small').length,
   }));
   if (tomorrowJump.active !== tomorrowJump.target || tomorrowJump.visible.length !== 1 || tomorrowJump.visible[0] !== tomorrowJump.target ||
       tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers !== 1 ||
-      !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "")) {
+      !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "") || !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 38 || tomorrowJump.legacyTaskTime) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
   }
   const timelineOrderId = await admin.evaluate(() => {
@@ -722,6 +725,16 @@ async function auditMobileAccount(page, profile) {
   });
   if (!timelineOrderId) throw new Error("手机时间轴没有可点击的任务占用块");
   await admin.locator(".modal-mask").waitFor();
+  const detailAssignment = await admin.evaluate(() => ({
+    people: document.querySelectorAll(".order-detail-modal .detail-assignment .assignment-person").length,
+    legacySelect: document.querySelectorAll(".order-detail-modal #dmReassign,.order-detail-modal #dmReassignBtn").length,
+    historyCollapsed: Boolean(document.querySelector(".order-detail-modal .dm-history:not([open])")),
+  }));
+  if (detailAssignment.people < 2 || detailAssignment.legacySelect || !detailAssignment.historyCollapsed) {
+    throw new Error(`工单详情没有把直接指派放在首要位置：${JSON.stringify(detailAssignment)}`);
+  }
+  await admin.waitForTimeout(220);
+  await admin.screenshot({ path: "/tmp/dispatch-admin-mobile-detail.png", fullPage: true });
   await admin.locator(".modal-mask [data-close]").click();
   if (await admin.locator(".mobile-nav .nav-btn").count() !== 4) throw new Error("管理员手机底栏不是 4 个主入口");
   if (await admin.locator(".schedule-desktop").isVisible()) throw new Error("手机端仍显示压缩的桌面排班网格");
@@ -997,6 +1010,34 @@ async function auditMobileAccount(page, profile) {
   if (await admin.locator(".order-row .tag").evaluateAll(tags => tags.some(tag => !tag.textContent.includes("已指派")))) {
     throw new Error("手机工单状态选择未正确过滤");
   }
+  const dispatchLayout = await admin.evaluate(() => {
+    const tabs = document.querySelector(".ws-dispatch .gtabs")?.getBoundingClientRect();
+    const actions = ["alertBtn", "refresh", "mobileAccount"].map(id => document.getElementById(id)?.getBoundingClientRect()).filter(Boolean);
+    const panelHead = document.querySelector(".ws-dispatch .dispatch-panel>.panel-head");
+    return {
+      topbarHeight: document.querySelector(".topbar")?.getBoundingClientRect().height || 0,
+      actionsSameRow: Boolean(tabs && actions.length === 3 && Math.abs(Math.min(...actions.map(rect => rect.top)) - tabs.top) <= 2),
+      panelHeadHidden: Boolean(panelHead && getComputedStyle(panelHead).display === "none"),
+      directPickers: document.querySelectorAll(".dispatch-panel .order-assignment").length,
+      legacyAssignSelects: document.querySelectorAll(".dispatch-panel [data-assignee]").length,
+    };
+  });
+  if (dispatchLayout.topbarHeight > 2 || !dispatchLayout.actionsSameRow || !dispatchLayout.panelHeadHidden ||
+      dispatchLayout.directPickers < 1 || dispatchLayout.legacyAssignSelects) {
+    throw new Error(`手机调度页仍然浪费空间或不能直接指派：${JSON.stringify(dispatchLayout)}`);
+  }
+  const directAssignment = await admin.evaluate(() => {
+    const button = document.querySelector('.dispatch-panel [data-direct-assign]:not(.current):not(:disabled)');
+    const orderId = Number(button?.dataset.directAssign || 0);
+    const order = state.orders.find(item => item.id === orderId);
+    const current = order?.assignee_id || "";
+    return { orderId, current, target: button?.dataset.workerId || "" };
+  });
+  if (!directAssignment.current || !directAssignment.target) throw new Error(`没有可用于验证的一键改派人员：${JSON.stringify(directAssignment)}`);
+  await admin.locator(`[data-direct-assign="${directAssignment.orderId}"][data-worker-id="${directAssignment.target}"]`).click();
+  await admin.waitForFunction(({ orderId, target }) => state.orders.find(item => item.id === orderId)?.assignee_id === target, directAssignment);
+  await admin.locator(`[data-direct-assign="${directAssignment.orderId}"][data-worker-id="${directAssignment.current}"]`).click();
+  await admin.waitForFunction(({ orderId, current }) => state.orders.find(item => item.id === orderId)?.assignee_id === current, directAssignment);
   await admin.locator("#dispatchStatusSelect").selectOption("all");
   await admin.locator("#dispatchSearch").fill("测试师傅");
   await admin.waitForFunction(() => new URL(location.href).searchParams.get("q") === "测试师傅");

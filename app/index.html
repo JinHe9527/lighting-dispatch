@@ -229,6 +229,25 @@ select{appearance:none;-webkit-appearance:none;padding-right:26px;background-ima
 .order-actions select{height:30px;max-width:130px;font-size:12px}
 .order-actions .text-btn{height:30px}
 .order-actions .field-issue{flex-basis:100%;margin:0;text-align:left}
+.order-row:has(.order-assignment) .order-actions{grid-column:2/-1;justify-content:stretch}
+.assignment-picker{min-width:0;padding:10px;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface-2)}
+.assignment-picker-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.assignment-picker-head strong{font-size:12px;font-weight:650}
+.assignment-picker-head span{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.assignment-people{display:flex;gap:7px;min-width:0;overflow-x:auto;padding:1px 1px 3px;scrollbar-width:none}
+.assignment-people::-webkit-scrollbar{display:none}
+.assignment-person{position:relative;min-width:100px;height:48px;padding:5px 8px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);display:grid;grid-template-columns:26px minmax(0,1fr);align-items:center;gap:7px;text-align:left;cursor:pointer}
+.assignment-person .avatar{width:26px;height:26px;font-size:10px}
+.assignment-person>span{min-width:0}
+.assignment-person strong,.assignment-person small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.assignment-person strong{font-size:12px;font-weight:650}
+.assignment-person small{margin-top:2px;color:var(--green-text);font-size:9px}
+.assignment-person:hover{border-color:color-mix(in srgb,var(--accent) 48%,var(--line));background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.assignment-person.current{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}
+.assignment-person.current small{color:var(--accent)}
+.assignment-person:disabled{cursor:not-allowed;opacity:.46;background:var(--fill)}
+.assignment-person:disabled small{color:var(--muted)}
+.assignment-withdraw{min-width:92px;height:48px;border:1px dashed color-mix(in srgb,var(--red) 38%,var(--line));border-radius:10px;background:transparent;color:var(--red-text);font-size:11px;font-weight:600;flex:none}
 .overdue .order-time strong,.overdue .order-time span{color:var(--red-text)}
 .current-job{padding:17px}
 .current-job-top{display:flex;justify-content:space-between;gap:12px}
@@ -555,6 +574,23 @@ textarea::placeholder{color:var(--dim)}
 .dm-row{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
 .dm-row select{flex:1;min-width:130px;height:34px}
 .dm-urg{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap}
+.dm-order-summary{display:grid;grid-template-columns:68px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px;border-radius:13px;background:var(--fill)}
+.dm-order-time strong{display:block;font:700 20px/1 var(--mono)}
+.dm-order-time span{display:block;margin-top:5px;color:var(--muted);font-size:10px;white-space:nowrap}
+.dm-order-main{min-width:0}
+.dm-order-main strong,.dm-order-main span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dm-order-main strong{font-size:15px}
+.dm-order-main span{margin-top:4px;color:var(--muted);font-size:12px}
+.dm-order-owner{display:flex;gap:12px;flex-wrap:wrap;margin:10px 2px 0;color:var(--muted);font-size:11px}
+.detail-assignment{margin-top:14px;padding:12px}
+.detail-assignment .assignment-people{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible}
+.detail-assignment .assignment-person{width:100%;min-width:0}
+.dm-history{margin-top:12px;border:1px solid var(--line-soft);border-radius:11px;background:var(--surface)}
+.dm-history>summary{min-height:44px;padding:0 12px;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;list-style:none}
+.dm-history>summary::-webkit-details-marker{display:none}
+.dm-history>summary::after{content:"";width:7px;height:7px;margin-left:auto;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
+.dm-history[open]>summary::after{transform:rotate(225deg)}
+.dm-history-body{padding:0 12px 12px}
 .text-btn.danger{color:var(--red-text);border-color:color-mix(in srgb,var(--red) 32%,var(--line))}
 .text-btn.danger:hover{background:color-mix(in srgb,var(--red) 9%,transparent)}
 .alert-set{display:flex;flex-direction:column;gap:4px}
@@ -814,9 +850,8 @@ button.day-person-tile:hover{background:var(--fill)}
 button.mobile-timeline-track{cursor:crosshair}
 button.mobile-timeline-track:hover{background-color:var(--fill-2)}
 .mobile-timeline-shift{position:absolute;top:7px;bottom:7px;left:var(--left);width:var(--width);border:1px solid color-mix(in srgb,var(--green) 36%,transparent);border-radius:5px;background:color-mix(in srgb,var(--green) 18%,transparent);pointer-events:none}
-.mobile-timeline-job{position:absolute;z-index:2;top:4px;bottom:4px;left:var(--left);width:max(4px,var(--width));min-width:0;border-left:2px solid color-mix(in srgb,var(--gc) 75%,var(--text));border-radius:5px;background:color-mix(in srgb,var(--gc) 72%,#111);box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none;overflow:hidden}
-.mobile-timeline-job span{display:block;padding:5px 4px 0;color:#fff;font-size:9px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mobile-timeline-job small{display:block;padding:2px 4px;color:rgba(255,255,255,.82);font:8px var(--mono);white-space:nowrap}
+.mobile-timeline-job{position:absolute;z-index:2;top:4px;bottom:4px;left:var(--left);width:max(3px,var(--width));min-width:0;border-radius:5px;background:color-mix(in srgb,var(--gc) 72%,#111);box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:auto;overflow:visible}
+.mobile-timeline-job-label{position:absolute;left:50%;top:50%;min-width:38px;height:26px;padding:0 6px;border:1px solid rgba(255,255,255,.32);border-radius:7px;background:color-mix(in srgb,var(--gc) 82%,#111);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:750;line-height:1;white-space:nowrap;transform:translate(-50%,-50%);box-shadow:0 2px 7px rgba(0,0,0,.26)}
 .mobile-timeline-job.done{opacity:.48;filter:saturate(.45)}
 .mobile-timeline-now-layer{position:absolute;z-index:4;top:0;right:8px;bottom:0;left:var(--name-col);pointer-events:none}
 .mobile-timeline-now{position:absolute;top:var(--axis-height);bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -981,6 +1016,10 @@ button.dp:hover{border-color:var(--line)}
   .mobile-assignee .icon{color:var(--accent)}
   .order-row>div:nth-last-child(2){align-self:start;margin-top:1px}
   .order-actions{grid-column:2/4;justify-content:flex-start;margin-top:2px;gap:8px}.order-actions select{height:44px;max-width:180px}.order-actions .text-btn{min-height:44px}
+  .order-row:has(.order-assignment) .order-actions{grid-column:1/-1;margin-top:7px}
+  .order-assignment{width:100%;padding:9px;background:var(--fill)}
+  .order-assignment .assignment-picker-head{margin-bottom:7px}
+  .order-assignment .assignment-person{min-width:96px;height:48px}
   .review-row{grid-template-columns:1fr;padding:14px 16px;gap:9px}.review-actions{justify-content:flex-start}.review-actions .text-btn{min-height:44px}
   .status-governance{min-height:0}
   .dg-endlab{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;line-height:22px}
@@ -1030,17 +1069,28 @@ button.dp:hover{border-color:var(--line)}
   .schedule-day .calendar-jump{position:absolute;inset:0;width:44px;height:44px;padding:0;opacity:0;cursor:pointer}
   .schedule-day .seg{grid-column:2;height:44px}
   .schedule-day .schedule-action-group{grid-column:3}
-  .app-shell:has(.ws-dash) .topbar{position:absolute;inset:0 0 auto;height:0;padding:0;border:0;overflow:visible}
-  .app-shell:has(.ws-dash) .topbar .page-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-  .app-shell:has(.ws-dash) .topbar .tb-tabs{display:none}
-  .app-shell:has(.ws-dash) .topbar .top-actions{position:absolute;top:max(10px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:30;display:flex;gap:4px}
-  .app-shell:has(.ws-dash) .topbar .top-actions>*{display:none}
-  .app-shell:has(.ws-dash) .topbar #alertBtn,.app-shell:has(.ws-dash) .topbar #refresh,.app-shell:has(.ws-dash) .topbar #mobileAccount{display:grid}
+  .app-shell:has(.ws-dash) .topbar,.app-shell:has(.ws-dispatch) .topbar{position:absolute;inset:0 0 auto;height:0;padding:0;border:0;overflow:visible}
+  .app-shell:has(.ws-dash) .topbar .page-title,.app-shell:has(.ws-dispatch) .topbar .page-title{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .app-shell:has(.ws-dash) .topbar .tb-tabs,.app-shell:has(.ws-dispatch) .topbar .tb-tabs{display:none}
+  .app-shell:has(.ws-dash) .topbar .top-actions,.app-shell:has(.ws-dispatch) .topbar .top-actions{position:absolute;top:max(10px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:30;display:flex;gap:4px}
+  .app-shell:has(.ws-dash) .topbar .top-actions>*,.app-shell:has(.ws-dispatch) .topbar .top-actions>*{display:none}
+  .app-shell:has(.ws-dash) .topbar #alertBtn,.app-shell:has(.ws-dash) .topbar #refresh,.app-shell:has(.ws-dash) .topbar #mobileAccount,.app-shell:has(.ws-dispatch) .topbar #alertBtn,.app-shell:has(.ws-dispatch) .topbar #refresh,.app-shell:has(.ws-dispatch) .topbar #mobileAccount{display:grid}
   .ws-dash{height:100dvh;padding:max(10px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
   .ws-dash>.banner{display:none}
-  .ws-dash .gtabs{width:calc(100% - 140px);max-width:calc(100% - 140px);margin-bottom:10px}
-  .ws-dash .gtabs .filter{min-width:0;flex:1 1 0;gap:3px;padding:0 2px;font-size:10px}
-  .ws-dash .gtabs .gdot{width:6px;height:6px}
+  .ws-dispatch{padding-top:max(10px,env(safe-area-inset-top))}
+  .ws-dispatch>.banner{display:none}
+  .ws-dash .gtabs,.ws-dispatch .gtabs{width:calc(100% - 140px);max-width:calc(100% - 140px);margin-bottom:10px}
+  .ws-dash .gtabs .filter,.ws-dispatch .gtabs .filter{min-width:0;flex:1 1 0;gap:3px;padding:0 2px;font-size:10px}
+  .ws-dash .gtabs .gdot,.ws-dispatch .gtabs .gdot{width:6px;height:6px}
+  .ws-dispatch .adaptive-filter-row{top:max(6px,env(safe-area-inset-top))}
+  .ws-dispatch .dispatch-panel>.panel-head{display:none}
+  .ws-dispatch .order-main .gchip{display:none!important}
+  .ws-dispatch .order-main{gap:2px 7px}
+  .ws-dispatch .order-row{position:relative;grid-template-columns:54px minmax(0,1fr)}
+  .ws-dispatch .order-row>div:nth-last-child(2){position:absolute;top:12px;right:14px;margin:0}
+  .ws-dispatch .order-main>strong{padding-right:112px}
+  .ws-dispatch .order-main>.mobile-assignee{flex:0 1 auto}
+  .ws-dispatch .order-time span{display:block;margin-top:4px;font-size:9px}
   .dash{flex-wrap:nowrap;overflow-x:auto;gap:6px;padding:2px 2px 6px;scrollbar-width:none}
   .dash::-webkit-scrollbar{display:none}
   .dash-lb{width:auto;padding-bottom:0}
@@ -1164,6 +1214,11 @@ button.dp:hover{border-color:var(--line)}
   .modal .dm-row .text-btn{height:44px;font-size:14px}
   .modal .dm-foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
   .modal .dm-foot .text-btn{width:100%;height:44px;font-size:14px}
+  .order-detail-modal{padding-top:14px!important}
+  .order-detail-modal .modal-head{margin-bottom:9px}
+  .detail-assignment .assignment-people{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dm-order-summary{grid-template-columns:60px minmax(0,1fr);padding:10px}
+  .dm-order-summary>.tag{grid-column:1/-1;justify-self:start}
   /* 配置页 */
   .data-table td input,.data-table td select{height:44px}
   .data-table td::before{flex:0 0 56px}
@@ -1238,7 +1293,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802o";
+const APP_VERSION="v0802p";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -1941,7 +1996,7 @@ function renderApp(){
         :page==="settings"
           ?cfgSecTabs(false)
           :"";
-  document.getElementById("app").innerHTML=`<div class="app-shell"><aside class="side"><div class="side-brand"><span class="app-icon">${icon("lamp-ceiling")}</span><strong>团播派工</strong></div><nav class="nav">${navHtml}</nav><div class="side-bottom"><div class="connection"><span class="live-dot"></span>${state.test_mode?"测试库在线":"服务在线"} · ${APP_VERSION}</div><button class="user-row" id="logout" aria-label="退出当前账号">${avatar(me)}<span class="user-meta"><strong>${esc(me.name)}</strong><span>${me.role==="staff"&&me.lead?"组长":ROLE_LABEL[me.role]||me.role}</span></span>${icon("log-out",true)}</button></div></aside><main class="main" id="mainContent" tabindex="-1"><header class="topbar${topTabs?" has-tabs":""}"><div class="page-title"><h1>${title}</h1></div>${topTabs?`<div class="tb-tabs">${topTabs}</div>`:""}<div class="top-actions">${me.role!=="team"?`<span class="duty-pill" title="当前实际在岗人数"><span class="live-dot"></span>在岗 <b>${onDutyCount()}</b></span>`:""}<span class="clock">${currentTime}</span><button class="icon-btn" id="alertBtn" aria-label="提醒设置" title="提醒设置（声音/震动/通知）">${icon("bell")}</button><button class="icon-btn" id="themeToggle" aria-label="${THEME_META[themePref].label}" title="${THEME_META[themePref].label}">${icon(THEME_META[themePref].icon)}</button><button class="icon-btn" id="refresh" aria-label="刷新" title="刷新">${icon("refresh-cw")}</button><button class="icon-btn mobile-account" id="mobileAccount" aria-label="账户：${esc(me.name)}" title="账户">${avatar(me)}</button></div></header><div class="workspace ${page==="overview"||page==="dispatch"?"ws-wide":"ws-narrow"}${page==="overview"?" ws-dash":""}">${srvVer&&srvVer!==APP_VERSION?`<div class="banner warn">前后端版本不一致：页面 ${APP_VERSION} / 服务 ${esc(srvVer)}——服务端还在跑旧代码，请在服务器上重启 server.py（用部署包里的「重启服务」脚本）后刷新</div>`:""}${state.test_mode?'<div class="banner info">测试模式，当前操作不会写入正式数据库</div>':""}${bootstrap}<div id="view">${renderPage()}</div></div></main><nav class="mobile-nav" aria-label="移动端主导航" style="--mobile-count:${mobileNav.length}">${mobileNavHtml}</nav></div>`;
+  document.getElementById("app").innerHTML=`<div class="app-shell"><aside class="side"><div class="side-brand"><span class="app-icon">${icon("lamp-ceiling")}</span><strong>团播派工</strong></div><nav class="nav">${navHtml}</nav><div class="side-bottom"><div class="connection"><span class="live-dot"></span>${state.test_mode?"测试库在线":"服务在线"} · ${APP_VERSION}</div><button class="user-row" id="logout" aria-label="退出当前账号">${avatar(me)}<span class="user-meta"><strong>${esc(me.name)}</strong><span>${me.role==="staff"&&me.lead?"组长":ROLE_LABEL[me.role]||me.role}</span></span>${icon("log-out",true)}</button></div></aside><main class="main" id="mainContent" tabindex="-1"><header class="topbar${topTabs?" has-tabs":""}"><div class="page-title"><h1>${title}</h1></div>${topTabs?`<div class="tb-tabs">${topTabs}</div>`:""}<div class="top-actions">${me.role!=="team"?`<span class="duty-pill" title="当前实际在岗人数"><span class="live-dot"></span>在岗 <b>${onDutyCount()}</b></span>`:""}<span class="clock">${currentTime}</span><button class="icon-btn" id="alertBtn" aria-label="提醒设置" title="提醒设置（声音/震动/通知）">${icon("bell")}</button><button class="icon-btn" id="themeToggle" aria-label="${THEME_META[themePref].label}" title="${THEME_META[themePref].label}">${icon(THEME_META[themePref].icon)}</button><button class="icon-btn" id="refresh" aria-label="刷新" title="刷新">${icon("refresh-cw")}</button><button class="icon-btn mobile-account" id="mobileAccount" aria-label="账户：${esc(me.name)}" title="账户">${avatar(me)}</button></div></header><div class="workspace ${page==="overview"||page==="dispatch"?"ws-wide":"ws-narrow"}${page==="overview"?" ws-dash":""}${page==="dispatch"?" ws-dispatch":""}">${srvVer&&srvVer!==APP_VERSION?`<div class="banner warn">前后端版本不一致：页面 ${APP_VERSION} / 服务 ${esc(srvVer)}——服务端还在跑旧代码，请在服务器上重启 server.py（用部署包里的「重启服务」脚本）后刷新</div>`:""}${state.test_mode?'<div class="banner info">测试模式，当前操作不会写入正式数据库</div>':""}${bootstrap}<div id="view">${renderPage()}</div></div></main><nav class="mobile-nav" aria-label="移动端主导航" style="--mobile-count:${mobileNav.length}">${mobileNavHtml}</nav></div>`;
   renderFeishuSettingsPanel();
   bindShell();
   drawIcons();
@@ -1967,11 +2022,22 @@ let _fitBound=false;function bindFit(){if(_fitBound)return;_fitBound=true;window
 function renderPage(){if(me.role==="admin")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="crew"?adminCrew():page==="stats"?adminStats():page==="settings"?adminSettings():adminAudit();if(navKey()==="lead")return page==="overview"?adminOverview():page==="request"?teamRequest():page==="dispatch"?adminDispatch():page==="work"?staffWork():page==="crew"?adminCrew():page==="audit"?adminAudit():adminStats();if(me.role==="staff")return page==="work"?staffWork():page==="request"?teamRequest():page==="open"?openOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard();return page==="request"?teamRequest():page==="orders"?teamOrders():page==="stats"?adminStats():page==="audit"?adminAudit():crewBoard()}
 
 function staffOptions(selected="",grp="",order=null){const dateStr=order?(order.date||todayStr()):todayStr();const arrive=order?(order.arrive||""):"";const future=dateStr!==todayStr();const list=(grp?staffForGroup(grp):(state.staff||[])).filter(p=>canAssign(p,dateStr,arrive,order));return list.map(person=>{const shift=effectiveShift(person,dateStr);const tag=future?(shift&&shift.name||"未排班"):personAvail(person).label;return `<option value="${esc(person.open_id)}" ${person.open_id===selected?"selected":""}>${esc(person.name)} · ${esc(tag)}</option>`}).join("")||'<option value="">该时段本组无可派成员</option>'}
+function assignmentReason(person,order){const reason=assignBlock(person,order.date||todayStr(),order.arrive,order);return reason?reason.replace(new RegExp(`^${String(person.name).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\s*`),""):"可派"}
+function assignmentPickerHtml(order,context="inline"){
+  const people=staffForGroup(order.grp).filter(person=>!person.intern&&person.role!=="team"),current=order.assignee_id||"";
+  const buttons=people.map(person=>{const selected=person.open_id===current,reason=selected?"当前负责人":assignmentReason(person,order),blocked=!selected&&reason!=="可派";return `<button type="button" class="assignment-person ${selected?"current":""}" data-direct-assign="${order.id}" data-worker-id="${esc(person.open_id)}"${selected?' aria-current="true"':""}${blocked?` disabled title="${esc(reason)}"`:""}>${avatar(person)}<span><strong>${esc(person.name)}</strong><small>${esc(reason)}</small></span></button>`}).join("");
+  const withdraw=context==="detail"&&current?`<button type="button" class="assignment-withdraw" data-unassign-order="${order.id}">撤回待派</button>`:"";
+  return `<section class="assignment-picker ${context==="detail"?"detail-assignment":"order-assignment"}"><div class="assignment-picker-head"><strong>${context==="detail"?"直接安排负责人":"直接指派"}</strong>${context==="detail"?`<span>${current?`当前 ${esc(order.assignee_name||"已指派")}`:"尚未指派"}</span>`:""}</div><div class="assignment-people">${buttons||'<span class="dim">本组暂无工作人员</span>'}${withdraw}</div></section>`
+}
+function bindDirectAssignments(root=document,afterSuccess=null){
+  root.querySelectorAll("[data-direct-assign]").forEach(button=>button.onclick=()=>{const order=(state.orders||[]).find(item=>item.id===Number(button.dataset.directAssign)),worker=(state.staff||[]).find(item=>item.open_id===button.dataset.workerId);if(!order||!worker)return;if(order.assignee_id===worker.open_id){showToast(`${worker.name} 已经是当前负责人`);return}const endpoint=order.status==="pending"?"assign":"reassign";return runButtonAction(button,"指派中…",async()=>{await apiPost(endpoint,{order_id:order.id,user_id:worker.open_id});showToast(`已安排给 ${worker.name}`);if(afterSuccess)afterSuccess();load()})});
+  root.querySelectorAll("[data-unassign-order]").forEach(button=>button.onclick=()=>runButtonAction(button,"撤回中…",async()=>{await apiPost("reassign",{order_id:Number(button.dataset.unassignOrder),user_id:""});showToast("已撤回到待派工");if(afterSuccess)afterSuccess();load()}))
+}
 function hhmm(ts){const t=tsToMs(ts);return isNaN(t)?"--:--":new Date(t).toTimeString().slice(0,5)}
 function minsBetween(a,b){const x=tsToMs(a),y=tsToMs(b);if(isNaN(x)||isNaN(y))return null;const d=(y-x)/60000;return d>=0?d:null}
 function legTxt(m){return m==null?"":m<60?`${Math.round(m)} 分钟`:`${Math.floor(m/60)} 小时 ${Math.round(m%60)} 分`}
 function orderTimelineHtml(o){const st=[["下单",o.created_at,"send"],["接单",o.accepted_at,"hand"],["开始",o.started_at,"play"],["完成",o.done_at,"check"]];const resp=minsBetween(o.created_at,o.accepted_at),work=minsBetween(o.started_at,o.done_at),total=minsBetween(o.created_at,o.done_at);return `<div class="tl-steps">${st.map(([label,ts])=>{const ok=!isNaN(tsToMs(ts));return `<div class="tl-step ${ok?"done":""}"><span class="tl-node"></span><div class="tl-txt"><strong>${label}</strong><span class="mono">${ok?hhmm(ts):"—"}</span></div></div>`}).join("")}</div><dl class="mini-dl">${resp!=null?`<dt>响应（下单→接单）</dt><dd>${legTxt(resp)}</dd>`:""}${work!=null?`<dt>作业（开始→完成）</dt><dd>${legTxt(work)}</dd>`:""}${total!=null?`<dt>总时长（下单→完成）</dt><dd>${legTxt(total)}</dd>`:""}</dl>`}
-function orderExtra(order){const kind=order.media_kind||"audio";const marks=(order.note?icon("message-square-text",true):"")+(order.media?icon(kind==="video"?"video":"volume-2",true):"")+(order.media2?icon(order.media2_kind==="video"?"video":"volume-2",true):"");return `<button class="order-extra" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(kind)}" data-team="${esc(order.team)}">${marks}${icon("clock-3",true)}<span>进度</span></button>`}
+function orderExtra(order){const kind=order.media_kind||"audio";const marks=(order.note?icon("message-square-text",true):"")+(order.media?icon(kind==="video"?"video":"volume-2",true):"")+(order.media2?icon(order.media2_kind==="video"?"video":"volume-2",true):"");return `<button class="order-extra" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(kind)}" data-team="${esc(order.team)}" aria-label="查看${esc(order.team)}工单详情">${marks}${icon("chevron-right",true)}<span>详情</span></button>`}
 async function cancelOrder(oid,after){const reason=await promptBox("取消原因（必填）","例如：直播时间调整 / 重复下单 / 需求撤回");if(reason===null)return;try{await apiPost("cancel-order",{order_id:Number(oid),reason});showToast("工单已取消并保留记录");if(after)after();load()}catch(e){}}
 function transferOrder(oid){const order=(state.orders||[]).find(item=>item.id===Number(oid));if(!order)return;const node=document.createElement("div");node.className="modal-mask";const reasons=["临时生病","家庭急事","交通受阻","设备故障","排班临时冲突","能力不匹配","派单错误","其他紧急情况"];const candidates=staffForGroup(order.grp).filter(person=>person.open_id!==me.open_id&&canAssign(person,order.date||todayStr(),order.arrive,order));node.innerHTML=`<div class="modal"><div class="modal-head"><strong>申请转包 · ${esc(order.team)}</strong><button class="icon-btn" data-close aria-label="关闭">${icon("x")}</button></div><p class="modal-note">新负责人接受前，你仍然负责这张工单。近 30 天第一次普通转包可直接开放；第二次及以后、开始前 2 小时内、任务进行中或同单再次交接均需组长审批。</p><div class="form-grid"><label>原因<select id="transferReason">${reasons.map(reason=>`<option>${esc(reason)}</option>`).join("")}</select></label><label>邀请对象<select id="transferTarget"><option value="">开放给所有符合条件的本组成员</option>${candidates.map(person=>`<option value="${esc(person.open_id)}">${esc(person.name)} · ${esc(person.shift||"未排班")}</option>`).join("")}</select></label><label class="span-2">补充说明<textarea id="transferDetail" rows="3" placeholder="其他紧急情况必须填写，其他原因建议说明具体情况"></textarea></label></div><div class="dm-foot"><button class="primary" id="transferSubmit">${icon("repeat-2")}提交转包申请</button></div></div>`;const close=()=>removeDialog(node);node.onclick=event=>{if(event.target===node||event.target.closest("[data-close]"))close()};document.body.appendChild(node);drawIcons();bindDialog(node,close,"#transferReason");
 node.querySelector("#transferSubmit").onclick=async event=>{
@@ -2019,7 +2085,6 @@ function showDetail(el){
   const mkPlayer=(path,kind)=>!path?"":kind==="video"?`<video src="${esc(path)}" controls playsinline style="width:100%;max-height:48vh;border-radius:10px;background:#000"></video>`:`<audio src="${esc(path)}" controls style="width:100%"></audio>`;
   const transferLabel={awaiting_lead:"等待组长审批",open:"等待新负责人接受",accepted:"已接受",rejected:"已拒绝",withdrawn:"已撤回",expired:"已超时"};
   let actions="";
-  if(canReassign)actions+=`<div class="dm-row"><select id="dmReassign"><option value="">撤回到待派工</option>${staffOptions(o.assignee_id||"",o.grp,o)}</select><button class="text-btn amber" id="dmReassignBtn">${icon("send",true)}改派</button></div>`;
   if(canEdit)actions+=`<div class="dm-row"><select id="dmTask">${slaForGroup(o.grp).map(rule=>`<option ${rule.task_type===o.task_type?"selected":""}>${esc(rule.task_type)}</option>`).join("")}</select>${canManage?`<label class="dm-urg"><span class="switch"><input type="checkbox" id="dmUrgent" ${o.urgent?"checked":""}><i></i></span>紧急</label>`:""}<button class="text-btn" id="dmSaveBtn">${icon("check",true)}保存</button></div>`;
   if(canTransfer)actions+=`<button class="text-btn" id="dmTransferBtn">${icon("repeat-2",true)}申请转包</button>`;
   if(canApprove)actions+=`<button class="text-btn amber" id="dmApproveBtn">${icon("check",true)}批准转包</button><button class="text-btn danger" id="dmRejectBtn">${icon("x",true)}拒绝转包</button>`;
@@ -2028,10 +2093,12 @@ function showDetail(el){
   if(pendingReview)actions+=`${pendingReview.kind==="team_dispute"?`<button class="text-btn amber" data-review-reopen="${pendingReview.id}">${icon("rotate-ccw",true)}重新打开</button>`:`<button class="text-btn amber" data-review-approve="${pendingReview.id}">${icon("check",true)}确认时间</button>`}<button class="text-btn" data-review-correct="${pendingReview.id}">${icon("clock-3",true)}修正时间</button><button class="text-btn danger" data-review-reject="${pendingReview.id}">${icon("x",true)}驳回</button>`;
   if(canDispute)actions+=`<button class="text-btn danger" id="dmDisputeBtn">${icon("flag",true)}结束时间有问题</button>`;
   if(canCancel)actions+=`<button class="text-btn danger" id="dmCancelBtn">${icon("ban",true)}取消工单</button>`;
+  const assignment=canReassign?assignmentPickerHtml(o,"detail"):"";
   const node=document.createElement("div");node.className="modal-mask";
-  node.innerHTML=`<div class="modal"><div class="modal-head"><strong>${esc(o.team||"工单")} · ${esc(o.grp||"")}</strong><button class="icon-btn" data-close aria-label="关闭">${icon("x")}</button></div><div style="margin:8px 0">${orderTag(o)}</div>${o.creator_name?`<p class="dim">下单人：${esc(o.creator_name)}${o.assignee_name?` · 负责人：${esc(o.assignee_name)}`:""}</p>`:""}${o.id?orderTimelineHtml(o):""}${timeReviewSummary(o)}${o.note?`<div class="section-label">备注说明</div><p class="modal-note">${esc(o.note)}</p>`:""}${o.done_note?`<div class="section-label">完成说明</div><p class="modal-note">${esc(o.done_note)}</p>`:""}${o.cancel_reason?`<div class="section-label">取消原因</div><p class="modal-note">${esc(o.cancel_reason)}</p>`:""}${o.abnormal_reason?`<div class="section-label">异常原因</div><p class="modal-note">${esc(o.abnormal_reason)}</p>`:""}${transfer?`<div class="section-label">转包状态</div><p class="modal-note">${esc(transferLabel[transfer.status]||transfer.status)} · ${esc(transfer.reason_code)}${transfer.reason_detail?` · ${esc(transfer.reason_detail)}`:""}</p>`:""}${o.media?`<div class="section-label">附件</div>${mkPlayer(o.media,o.media_kind)}`:""}${o.media2?mkPlayer(o.media2,o.media2_kind):""}${actions?`<div class="dm"><div class="section-label">可执行操作</div><div class="dm-foot">${actions}</div></div>`:""}</div>`;
+  const dateLabel=o.date===todayStr()?"今天":o.date?`${o.date.slice(5)} ${weekdayLabel(o.date)}`:"今天";
+  node.innerHTML=`<div class="modal order-detail-modal"><div class="modal-head"><strong>工单详情</strong><button class="icon-btn" data-close aria-label="关闭">${icon("x")}</button></div><div class="dm-order-summary"><div class="dm-order-time"><strong>${esc(o.arrive||"--:--")}</strong><span>${esc(dateLabel)}</span></div><div class="dm-order-main"><strong>${esc(o.team||"工单")}</strong><span>${esc(o.room||"")} · ${esc(o.task_type||"")} · ${esc(o.grp||"")}</span></div>${orderTag(o)}</div><div class="dm-order-owner"><span>下单人 ${esc(o.creator_name||"未记录")}</span><span>负责人 ${esc(o.assignee_name||"待派工")}</span></div>${assignment}${o.note?`<div class="section-label">备注说明</div><p class="modal-note">${esc(o.note)}</p>`:""}${o.done_note?`<div class="section-label">完成说明</div><p class="modal-note">${esc(o.done_note)}</p>`:""}${o.cancel_reason?`<div class="section-label">取消原因</div><p class="modal-note">${esc(o.cancel_reason)}</p>`:""}${o.abnormal_reason?`<div class="section-label">异常原因</div><p class="modal-note">${esc(o.abnormal_reason)}</p>`:""}${transfer?`<div class="section-label">转包状态</div><p class="modal-note">${esc(transferLabel[transfer.status]||transfer.status)} · ${esc(transfer.reason_code)}${transfer.reason_detail?` · ${esc(transfer.reason_detail)}`:""}</p>`:""}${timeReviewSummary(o)}${o.media?`<div class="section-label">附件</div>${mkPlayer(o.media,o.media_kind)}`:""}${o.media2?mkPlayer(o.media2,o.media2_kind):""}${o.id?`<details class="dm-history"><summary>${icon("history",true)}查看工单进度与时间</summary><div class="dm-history-body">${orderTimelineHtml(o)}</div></details>`:""}${actions?`<div class="dm"><div class="section-label">其他操作</div><div class="dm-foot">${actions}</div></div>`:""}</div>`;
   const close=()=>removeDialog(node);node.onclick=event=>{if(event.target===node||event.target.closest("[data-close]"))close()};document.body.appendChild(node);drawIcons();bindDialog(node,close,"[data-close]");
-  const reassign=node.querySelector("#dmReassignBtn");if(reassign)reassign.onclick=()=>runButtonAction(reassign,"改派中…",async()=>{const user_id=node.querySelector("#dmReassign").value;await apiPost("reassign",{order_id:oid,user_id});showToast(user_id?"已改派":"已撤回到待派工");close();load()});
+  bindDirectAssignments(node,close);
   const save=node.querySelector("#dmSaveBtn");if(save)save.onclick=()=>runButtonAction(save,"保存中…",async()=>{const urgent=node.querySelector("#dmUrgent");await apiPost("edit-order",{order_id:oid,task:node.querySelector("#dmTask").value,...(urgent?{urgent:urgent.checked?"1":"0"}:{})});showToast("工单已更新");close();load()});
   const transferButton=node.querySelector("#dmTransferBtn");if(transferButton)transferButton.onclick=()=>{close();transferOrder(oid)};
   const cancel=node.querySelector("#dmCancelBtn");if(cancel)cancel.onclick=()=>cancelOrder(oid,close);
@@ -2041,11 +2108,11 @@ function showDetail(el){
   const withdraw=node.querySelector("#dmWithdrawBtn");if(withdraw)withdraw.onclick=()=>runButtonAction(withdraw,"处理中…",async()=>{await apiPost("transfer-withdraw",{transfer_id:transfer.id});showToast("转包已撤回");close();load()});
   const dispute=node.querySelector("#dmDisputeBtn");if(dispute)dispute.onclick=()=>{close();disputeCompletion(oid)};
 }
-function orderRow(order,mode="view"){let actions="";const pendingStart=order.time_review&&order.time_review.status==="pending"&&order.time_review.kind==="retro_start";if(mode==="dispatch"&&order.status==="pending"){const avail=staffForGroup(order.grp).filter(p=>canAssign(p,order.date||todayStr(),order.arrive,order));actions=avail.length?`<select data-assignee="${order.id}">${staffOptions("",order.grp,order)}</select><button class="text-btn amber" data-assign="${order.id}">${icon("send",true)}派单</button>`:`<span class="dim" style="font-size:11px;white-space:nowrap">该时段无人可派</span>`;}else if(mode==="staff"&&order.status==="pending"){actions=`<button class="text-btn amber" data-take="${order.id}">${icon("hand",true)}接单</button>`;}else if(mode==="mine"&&order.status==="assigned"){actions=pendingStart?`<span class="tag s-review"><span class="status-dot"></span>补报待核实</span>`:`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn" data-report-start="${order.id}">${icon("history",true)}补报</button><button class="text-btn amber" data-start="${order.id}">${icon("play",true)}开始任务</button>`;}else if(mode==="mine"&&order.status==="in_progress"){actions=`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn amber" data-complete="${order.id}">${icon("check",true)}结束跟播</button>`;}else if(mode==="mine"&&order.status==="completion_review"){actions=`<span class="tag s-review"><span class="status-dot"></span>等待时间核实</span>`;}return `<div class="order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong><span>${order.urgent?"紧急·尽快":isOverdue(order)?"已逾期":(orderDayLabel(order)?orderDayLabel(order)+"到岗":"到岗时间")}</span></div><div class="order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span>${esc(order.room)} · ${esc(order.task_type)}</span><div class="order-meta">${order.grp?groupChip(order.grp):""}<span class="mobile-assignee">${icon("user-round",true)}${esc(order.assignee_name)||"待派工"}</span>${orderProgress(order)}${orderExtra(order)}</div></div><div class="order-detail"><strong>${esc(order.assignee_name)||"未指派"}</strong><span>预计 ${order.minutes} 分钟 · 基准 ${esc(order.base_time)}</span></div><div>${orderTag(order)}</div><div class="order-actions">${actions}</div></div>`}
+function orderRow(order,mode="view"){let actions="";const pendingStart=order.time_review&&order.time_review.status==="pending"&&order.time_review.kind==="retro_start";if(mode==="dispatch"&&["pending","assigned"].includes(order.status)){actions=assignmentPickerHtml(order)}else if(mode==="staff"&&order.status==="pending"){actions=`<button class="text-btn amber" data-take="${order.id}">${icon("hand",true)}接单</button>`;}else if(mode==="mine"&&order.status==="assigned"){actions=pendingStart?`<span class="tag s-review"><span class="status-dot"></span>补报待核实</span>`:`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn" data-report-start="${order.id}">${icon("history",true)}补报</button><button class="text-btn amber" data-start="${order.id}">${icon("play",true)}开始任务</button>`;}else if(mode==="mine"&&order.status==="in_progress"){actions=`<button class="text-btn" data-transfer="${order.id}">${icon("repeat-2",true)}转包</button><button class="text-btn amber" data-complete="${order.id}">${icon("check",true)}结束跟播</button>`;}else if(mode==="mine"&&order.status==="completion_review"){actions=`<span class="tag s-review"><span class="status-dot"></span>等待时间核实</span>`;}return `<div class="order-row ${isOverdue(order)?"overdue":""} ${order.urgent?"urgent":""}"><div class="order-time"><strong>${esc(order.arrive)||"--:--"}</strong><span>${order.urgent?"紧急·尽快":isOverdue(order)?"已逾期":(orderDayLabel(order)?orderDayLabel(order)+"到岗":"到岗时间")}</span></div><div class="order-main"><strong>${order.urgent?'<span class="badge-urgent">紧急</span> ':""}${esc(order.team)}</strong><span>${esc(order.room)} · ${esc(order.task_type)}</span><div class="order-meta">${order.grp?groupChip(order.grp):""}<span class="mobile-assignee">${icon("user-round",true)}${esc(order.assignee_name)||"待派工"}</span>${orderProgress(order)}${orderExtra(order)}</div></div><div class="order-detail"><strong>${esc(order.assignee_name)||"未指派"}</strong><span>预计 ${order.minutes} 分钟 · 基准 ${esc(order.base_time)}</span></div><div>${orderTag(order)}</div><div class="order-actions">${actions}</div></div>`}
 function ordersPanel(orders,mode,title="工单队列",subtitle="",emptyLabel=""){
   const emptyText=emptyLabel||({"今日工单":"今日暂无工单","今日处理进度":"今日暂无处理任务","未来排期与待开始任务":"暂无待开始任务","可接工单":"暂无可接工单","我的自助工单":"暂无自助工单","本团队工单进度":"本团队暂无工单"}[title]||"暂无待派工单");
   const listClass=orders.length>50?"order-list large-list":"order-list";
-  return `<section class="panel"><div class="panel-head"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:""}</div><span class="tag">${orders.length} 张</span></div><div class="${listClass}">${orders.map(item=>orderRow(item,mode)).join("")||`<div class="order-empty">${icon("check-circle",true)}${emptyText}</div>`}</div></section>`
+  return `<section class="panel order-panel ${mode==="dispatch"?"dispatch-panel":""}"><div class="panel-head"><div><h2>${title}</h2>${subtitle?`<p>${subtitle}</p>`:""}</div><span class="tag">${orders.length} 张</span></div><div class="${listClass}">${orders.map(item=>orderRow(item,mode)).join("")||`<div class="order-empty">${icon("check-circle",true)}${emptyText}</div>`}</div></section>`
 }
 
 function dayGantt(dateStr){
@@ -2327,7 +2394,7 @@ function mobileTimelineRow(item,dateStr,range){
   const blocks=jobs.map(job=>{
     const order=job.order;
     if(job.end<=range.first||job.start>=range.last)return"";
-    return`<span class="mobile-timeline-job ${order.status==="completed"?"done":""}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span>${esc(timelineRoomLabel(order))}</span><small>${esc(order.arrive||"--:--")}–${scheduleClock(job.end)}</small></span>`
+    return`<span class="mobile-timeline-job ${order.status==="completed"?"done":""}" data-timeline-order="${order.id}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span class="mobile-timeline-job-label">${esc(timelineRoomLabel(order))}</span></span>`
   }).join("");
   const tag=canInteract?"button":"div",type=canInteract?' type="button"':"";
   const data=canInteract?` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`:"";
@@ -2699,6 +2766,7 @@ function bindShell(){
   const mobileAccount=document.getElementById("mobileAccount");
   if(mobileAccount)mobileAccount.onclick=openMobileAccount;
   bindActions();
+  bindDirectAssignments();
   bindNavigationActions()
 }
 function bindActions(){document.querySelectorAll("[data-transfer]").forEach(button=>button.onclick=()=>transferOrder(button.dataset.transfer));document.querySelectorAll("[data-team-binding]").forEach(select=>select.onchange=()=>runControlAction(select,async()=>{await apiPost("save",{entity:"users",record:{open_id:select.dataset.teamBinding,team_id:select.value}});showToast(select.value?"团队账号已绑定":"团队账号已解除绑定");load()}));document.querySelectorAll("[data-detail]").forEach(b=>b.onclick=()=>showDetail(b));document.querySelectorAll("[data-auditcat]").forEach(b=>b.onclick=()=>{auditCat=b.dataset.auditcat;renderApp()});{const gmSel=document.getElementById("gateMode");if(gmSel)gmSel.onchange=()=>runControlAction(gmSel,async()=>{await apiPost("setting",{key:"gate_mode",value:gmSel.value});showToast("登录准入已更新");load()});const di=document.getElementById("deptIds");if(di)di.onchange=()=>runControlAction(di,async()=>{await apiPost("setting",{key:"allow_dept_ids",value:di.value});showToast("部门ID已保存")})}document.querySelectorAll("[data-navvis]").forEach(cb=>cb.onchange=()=>{const role=cb.dataset.navvis;const ids=[...document.querySelectorAll(`[data-navvis="${role}"]`)].filter(x=>x.checked).map(x=>x.value);if(!ids.length){cb.checked=true;showToast("至少保留一个页面");return}return runControlAction(cb,async()=>{await apiPost("setting",{key:"nav_"+role,value:ids.join(",")});showToast("页面可见性已更新，对应角色刷新后生效");load()})});document.querySelectorAll("[data-approve]").forEach(button=>button.onclick=()=>runButtonAction(button,"处理中…",async()=>{await apiPost("save",{entity:"users",record:{open_id:button.dataset.approve,approved:"1"}});showToast("已放行，该成员现在可以正常使用");load()}));{const po=document.getElementById("purgeOrders");if(po)po.onclick=async()=>{const v=await promptBox("危险操作：将删除全部工单（不可恢复）。输入「清空」两个字确认","清空");if(v===null)return;return runButtonAction(po,"清空中…",async()=>{await apiPost("purge",{what:"orders",confirm:v.trim()});showToast("全部工单已清空");load()})};const pa=document.getElementById("purgeAudit");if(pa)pa.onclick=async()=>{const v=await promptBox("危险操作：将删除全部审计记录（不可恢复）。输入「清空」两个字确认","清空");if(v===null)return;return runButtonAction(pa,"清空中…",async()=>{await apiPost("purge",{what:"audit",confirm:v.trim()});auditRows=null;showToast("审计日志已清空");load()})}}document.querySelectorAll("[data-range]").forEach(b=>b.onclick=()=>{statsRange=b.dataset.range;statsData=null;statsPerson=null;statsPersonData=null;renderApp()});document.querySelectorAll("[data-statsgrp]").forEach(b=>b.onclick=()=>{statsGroup=b.dataset.statsgrp;statsData=null;statsPerson=null;statsPersonData=null;renderApp()});document.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>{const oid=b.dataset.person;if(statsPerson===oid){statsPerson=null;statsPersonData=null}else{statsPerson=oid;statsPersonData=null;loadStatsPerson(oid)}renderApp()});const statsCsvBtn=document.getElementById("statsCsv");if(statsCsvBtn)statsCsvBtn.onclick=exportStatsCsv;document.querySelectorAll("[data-filter]").forEach(button=>button.onclick=()=>{window.dispatchFilter=button.dataset.filter;renderApp()});document.querySelectorAll("[data-boardgrp]").forEach(button=>button.onclick=()=>{boardGrp=button.dataset.boardgrp;schedDataKey="";schedError="";renderApp()});document.querySelectorAll("[data-quick]").forEach(b=>b.onclick=()=>openQuickOrder(b.dataset.quick));bindDgDrag();document.querySelectorAll("[data-book]").forEach(b=>b.onclick=()=>{if(window.__dgSwallow){window.__dgSwallow=0;return}const parts=b.dataset.book.split("|");let at=parts[2];if(parts[1]===todayStr()){const nzf=m=>m<300?m+1440:m;const rn=nzf(nowMinutes());if(nzf(toMinutes(at))<rn){const mm=rn%1440;at=String(Math.floor(mm/60)).padStart(2,"0")+":"+String(mm%60).padStart(2,"0");}}openQuickOrder(parts[0],{date:parts[1],at})});{const qn=document.getElementById("quickNew");if(qn)qn.onclick=()=>openQuickOrder("")}document.querySelectorAll("[data-goto]").forEach(b=>b.onclick=()=>{page=b.dataset.goto;renderApp()});document.querySelectorAll("[data-schedview]").forEach(b=>b.onclick=()=>{schedView=b.dataset.schedview;schedError="";renderApp()});document.querySelectorAll("[data-schedule-nav]").forEach(button=>button.onclick=()=>moveScheduleDate(Number(button.dataset.scheduleNav)||0));document.querySelectorAll("[data-schedule-today]").forEach(button=>button.onclick=()=>{schedDate=todayStr();schedError="";renderApp()});{const jump=document.getElementById("scheduleDateJump");if(jump)jump.onchange=()=>{if(validIsoDate(jump.value)){schedDate=jump.value;schedError="";renderApp()}}}document.querySelectorAll("[data-select-calendar-day]").forEach(button=>button.onclick=()=>{schedDate=button.dataset.selectCalendarDay;schedError="";renderApp();if(window.innerWidth<=900)setTimeout(()=>document.querySelector(".planner-inspector")?.scrollIntoView({block:"nearest"}),30)});document.querySelectorAll("[data-open-calendar-day]").forEach(button=>button.onclick=()=>{schedDate=button.dataset.openCalendarDay;schedView="day";schedError="";renderApp()});document.querySelectorAll("[data-plan-day]").forEach(button=>button.onclick=()=>openQuickOrder("",{date:button.dataset.planDay,at:button.dataset.planDay===todayStr()?nextHourStr():"18:00"}));document.querySelectorAll("[data-schedule-edit]").forEach(button=>button.onclick=()=>openScheduleEditor(button.dataset.scheduleEdit));document.querySelectorAll("[data-plan-person]").forEach(button=>button.onclick=()=>{const person=(state.staff||[]).find(item=>item.open_id===button.dataset.planPerson);const date=button.dataset.planDate;const shift=person&&effectiveShift(person,date);openQuickOrder(button.dataset.planPerson,{date,at:date===todayStr()?nextHourStr():(shift&&shift.start||"18:00")})});document.querySelectorAll("[data-cfggrp]").forEach(button=>button.onclick=()=>{cfgGrp=button.dataset.cfggrp;renderApp()});document.querySelectorAll("[data-cfgsec]").forEach(b=>b.onclick=()=>{cfgSec=b.dataset.cfgsec;renderApp()});document.querySelectorAll(".settings-wrap>.panel").forEach(p=>{const t=(p.querySelector("h2")||{}).textContent||"";p.style.display=t===cfgSec?"":"none"});
@@ -2716,6 +2784,8 @@ document.querySelectorAll("[data-mobile-day]").forEach(button=>button.onclick=()
   if(plan){plan.dataset.planDay=date;plan.hidden=date<todayStr();plan.setAttribute("aria-label",`安排${fmtDateCn(date)}的任务`)}
 });
 document.querySelectorAll("[data-timeline-track]").forEach(track=>track.onclick=event=>{
+  const task=event.target.closest("[data-timeline-order]");
+  if(task)return showDetail({dataset:{oid:task.dataset.timelineOrder}});
   const first=Number(track.dataset.timelineFirst),last=Number(track.dataset.timelineLast);
   const shiftStart=Number(track.dataset.timelineStart),shiftEnd=Number(track.dataset.timelineEnd);
   const jobs=String(track.dataset.timelineJobs||"").split(",").filter(Boolean).map(value=>{const [id,start,end]=value.split(":").map(Number);return{id,start,end}});
@@ -2733,11 +2803,6 @@ document.querySelectorAll("[data-timeline-track]").forEach(track=>track.onclick=
   minute=Math.ceil(minute/15)*15;
   if(minute>=shiftEnd){showToast("该人员今天已经下班");return}
   openQuickOrder(track.dataset.timelinePerson,{date:track.dataset.timelineDate,at:scheduleClock(minute)})
-});
-document.querySelectorAll("[data-assign]").forEach(button=>button.onclick=()=>{
-  const select=document.querySelector(`[data-assignee="${button.dataset.assign}"]`);
-  if(!select.value)return showFieldIssue(select,"请选择要指派的工作人员",select.closest(".order-actions"));
-  return runButtonAction(button,"派单中…",async()=>{await apiPost("assign",{order_id:Number(button.dataset.assign),user_id:select.value});showToast("派单成功");load()})
 });
 document.querySelectorAll("[data-take]").forEach(button=>button.onclick=()=>runButtonAction(button,"接单中…",async()=>{await apiPost("assign",{order_id:Number(button.dataset.take)});showToast("接单成功");load()}));
 document.querySelectorAll("[data-start]").forEach(button=>button.onclick=()=>runButtonAction(button,"开始中…",async()=>{await apiPost("start",{order_id:Number(button.dataset.start)});showToast("已开始，正在计时");load()}));
@@ -3136,14 +3201,14 @@ function applyCrewGovernanceUi(){
 }
 
 const READ_ONLY_CONTROLS=[
-  "[data-transfer]","[data-assign]","[data-take]","[data-start]","[data-complete]",
+  "[data-transfer]","[data-direct-assign]","[data-unassign-order]","[data-take]","[data-start]","[data-complete]",
   "[data-report-start]","[data-review-approve]","[data-review-reject]","[data-review-reopen]","[data-review-correct]",
   "[data-user]","[data-identity]","[data-leave]","[data-rest]","[data-entity]","[data-delete]",
   "[data-rule]","[data-rulenum]","[data-navvis]","[data-team-binding]","[data-book]","[data-quick]",
   "[data-schedule-edit]","[data-plan-person]","[data-schedule-worker]","#scheduleSave",
   "[data-approve]","[data-access-action]","[data-manager-level]","#quickNew","#placeOrder","#addTeam","#addSla",
   "#addShift","#addGroup","#setReminderOn","#setReminderMin","#setUrgentOn","#gateMode","#deptIds","#purgeOrders",
-  "#qsGo","#dmReassign","#dmReassignBtn","#dmTask","#dmUrgent","#dmSaveBtn","#dmTransferBtn","#dmApproveBtn",
+  "#qsGo","#dmTask","#dmUrgent","#dmSaveBtn","#dmTransferBtn","#dmApproveBtn",
   "#dmRejectBtn","#dmAcceptBtn","#dmWithdrawBtn","#dmDisputeBtn","#dmCancelBtn","#doneSubmit","#reportStartSubmit",
   "#correctedSubmit","#transferSubmit"
 ].join(",");
