@@ -744,35 +744,67 @@ button.dg-mem .nm{text-decoration:underline;text-decoration-color:color-mix(in s
 .workload-card:has(.workload-add)>span{margin-right:34px}
 .ag-empty{padding:26px 12px;text-align:center;color:var(--muted);font-size:12px}
 .schedule-mobile{display:none}
+.schedule-desktop{flex:1;min-height:0;display:flex;flex-direction:column;padding:10px 12px 8px}
 .schedule-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0;flex-wrap:wrap}
+.schedule-action-group{display:flex;align-items:center;gap:8px}
 .schedule-adjust{height:28px}
 .calendar-nav{display:inline-flex;align-items:center;gap:4px}
 .calendar-nav .icon-btn{width:32px;height:32px}
 .calendar-today{height:32px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px;font-weight:600;cursor:pointer}
 .calendar-jump{width:132px;height:32px;padding:0 8px;font-size:12px}
-.mobile-agenda{padding:12px;display:flex;flex-direction:column;gap:10px}
-.agenda-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.agenda-summary span{min-height:64px;padding:9px 10px;border:1px solid var(--line-soft);border-radius:12px;background:var(--fill);color:var(--muted);font-size:12px;display:flex;flex-direction:column;justify-content:center}
-.agenda-summary b{font-size:21px;line-height:1.1;color:var(--text);font-variant-numeric:tabular-nums}
-.agenda-summary .warn b{color:var(--orange-text)}
-.agenda-pending{border:1px solid color-mix(in srgb,var(--orange) 35%,var(--line));background:color-mix(in srgb,var(--orange) 7%,var(--surface));border-radius:14px;padding:11px 12px;display:flex;flex-direction:column;gap:6px}
-.agenda-pending>strong{display:flex;align-items:center;gap:7px;color:var(--orange-text);font-size:13px}
-.agenda-pending>button{min-height:44px;border:0;border-top:1px solid var(--line-soft);background:transparent;color:var(--text);text-align:left;padding:8px 2px;font-size:13px}
-.agenda-pending>button b{font-family:var(--mono);margin-right:8px}
-.agenda-person{border:1px solid var(--line-soft);border-radius:14px;background:var(--surface);overflow:hidden}
-.agenda-person-head{min-height:68px;padding:11px 12px;display:flex;align-items:center;gap:10px}
-.agenda-who{min-width:92px;flex:1}
-.agenda-who strong{display:block;font-size:15px}
-.agenda-who>span{display:block;color:var(--muted);font-size:12px;margin-top:2px}
-.agenda-who strong,.agenda-who>span{overflow-wrap:anywhere}
-.agenda-status{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);white-space:nowrap}
-.agenda-add{min-height:44px;height:44px}
-.agenda-jobs{padding:0 12px 12px 52px;display:flex;flex-direction:column;gap:8px}
-.agenda-empty{color:var(--dim);font-size:13px;padding:5px 0}
-.agenda-job{width:100%;min-height:52px;border:0;border-left:3px solid var(--accent);border-radius:10px;background:var(--fill);padding:8px 10px;display:grid;grid-template-columns:50px minmax(0,1fr) auto;align-items:center;gap:8px;color:var(--text);text-align:left}
-.agenda-job>b{font:600 13px var(--mono)}
-.agenda-job>span:not(.tag){white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
-.agenda-job .tag{min-height:24px;padding:2px 8px;font-size:11px}
+.day-status-board{flex:none;border:1px solid var(--line-soft);background:var(--surface-2)}
+.day-status-head{min-height:36px;padding:6px 9px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.day-status-head strong{display:flex;align-items:center;gap:6px;font-size:13px}
+.day-status-head strong .icon{width:15px;height:15px;color:var(--accent)}
+.day-status-head>span{color:var(--muted);font:11px var(--mono);white-space:nowrap}
+.day-status-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1px;background:var(--line-soft)}
+.day-status-section{min-width:0;padding:8px;background:var(--surface)}
+.day-status-section h3{height:22px;margin:0 0 5px;display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:650}
+.day-status-section h3 .status-dot{width:8px;height:8px}
+.day-status-section h3 b{min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--fill);display:grid;place-items:center;color:var(--text);font:650 10px var(--mono)}
+.day-status-section.free h3{color:var(--green-text)}
+.day-status-section.busy h3{color:var(--orange-text)}
+.day-person-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:5px}
+.day-person-tile{position:relative;min-width:0;min-height:52px;padding:7px 8px;border:1px solid var(--line-soft);border-left:3px solid var(--status,var(--gray));background:var(--surface-2);color:var(--text);text-align:left;display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:1px 6px;align-content:center}
+button.day-person-tile:hover{background:var(--fill)}
+.day-person-tile strong{min-width:0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-lead{color:var(--accent);font-size:9px;font-weight:650}
+.day-person-tile .day-person-state{font-size:10px;font-weight:650;color:color-mix(in srgb,var(--status,var(--muted)) 74%,var(--text));white-space:nowrap}
+.day-person-tile small{grid-column:1/-1;min-width:0;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-person-tile.free{--status:var(--green);background:color-mix(in srgb,var(--green) 7%,var(--surface))}
+.day-person-tile.busy{--status:var(--orange);background:color-mix(in srgb,var(--orange) 7%,var(--surface))}
+.day-person-tile.away{--status:var(--gray);opacity:.76}
+.day-pending-strip{min-height:40px;padding:5px 8px;border-top:1px solid color-mix(in srgb,var(--orange) 35%,var(--line));display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;background:color-mix(in srgb,var(--orange) 7%,var(--surface))}
+.day-pending-strip::-webkit-scrollbar{display:none}
+.day-pending-strip>strong{display:flex;align-items:center;gap:5px;color:var(--orange-text);font-size:11px;white-space:nowrap;flex:none}
+.day-pending-strip>strong .icon{width:14px;height:14px}
+.day-pending-strip>button{height:28px;padding:0 8px;border:1px solid color-mix(in srgb,var(--orange) 30%,var(--line));background:var(--surface);color:var(--text);font-size:11px;white-space:nowrap;flex:none}
+.day-matrix-panel{margin-top:10px;border:1px solid var(--line-soft);background:var(--surface)}
+.day-matrix-head{min-height:42px;padding:7px 10px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;gap:10px}
+.day-matrix-head strong{font-size:13px}
+.day-matrix-head span{color:var(--muted);font-size:10px}
+.day-matrix-scroll{overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
+.day-matrix{--staff:1;min-width:calc(52px + var(--staff) * 92px);display:flex;flex-direction:column}
+.day-matrix-row{display:grid;grid-template-columns:52px repeat(var(--staff),minmax(92px,1fr));min-height:44px;border-top:1px solid var(--line-soft)}
+.day-matrix-row:first-child{border-top:0}
+.day-matrix-row.current{box-shadow:inset 0 2px 0 color-mix(in srgb,var(--accent) 75%,transparent)}
+.day-matrix-time{position:sticky;left:0;z-index:2;display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line);background:var(--surface);color:var(--muted);font:10px var(--mono)}
+.day-matrix-headrow{position:sticky;top:0;z-index:3;background:var(--surface)}
+.day-matrix-headrow .day-matrix-time{z-index:4;font-family:var(--sans);font-weight:650}
+.day-matrix-person{min-width:0;min-height:44px;padding:4px 5px;border:0;border-left:1px solid var(--line-soft);background:var(--surface);color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.day-matrix-person strong{max-width:100%;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-matrix-person small{max-width:100%;color:var(--muted);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button.day-matrix-person:hover{background:var(--fill)}
+.day-matrix-cell{position:relative;min-width:0;min-height:44px;padding:3px 5px;border:0;border-left:1px solid var(--line-soft);background:color-mix(in srgb,var(--green) 8%,var(--surface));color:var(--green-text);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;overflow:hidden}
+button.day-matrix-cell:hover{background:color-mix(in srgb,var(--green) 18%,var(--surface))}
+.day-matrix-cell.task{border-left:3px solid var(--gc);background:color-mix(in srgb,var(--gc) 14%,var(--surface));color:var(--text);cursor:pointer}
+.day-matrix-cell.task strong{max-width:100%;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-matrix-cell.task small{max-width:100%;color:var(--muted);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-matrix-cell.task.done{opacity:.58;border-left-color:var(--green)}
+.day-matrix-cell.off{background:color-mix(in srgb,var(--gray) 8%,var(--surface));color:var(--dim)}
+.day-matrix-cell.off::after{content:"";position:absolute;width:104%;border-top:1px solid color-mix(in srgb,var(--red) 74%,transparent);transform:rotate(-22deg);pointer-events:none}
+.day-matrix-cell.past{opacity:.42;filter:grayscale(.7)}
+.schedule-desktop .day-status-board{margin-bottom:10px}
 .schedule-modal{max-width:620px}
 .schedule-form{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
 .schedule-form-row{min-height:58px;padding:8px 10px;display:grid;grid-template-columns:minmax(150px,1fr) minmax(230px,1.2fr);align-items:center;gap:12px;border-top:1px solid var(--line-soft)}
@@ -955,15 +987,19 @@ button.dp:hover{border-color:var(--line)}
   .data-table tbody tr td:not(.td-del){padding-right:46px}
   .schedule-desktop{display:none}
   .schedule-mobile{display:block}
-  .tl-panel .panel-head{flex-wrap:wrap;gap:10px;padding-top:12px;padding-bottom:12px}
+  .tl-panel .panel-head{flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}
   .schedule-head>div:first-child{width:100%}
-  .schedule-controls{width:100%;flex-direction:column;align-items:stretch;gap:10px}
-  .schedule-adjust{order:2;width:100%;height:44px}
+  .schedule-controls{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px}
+  .schedule-action-group{height:44px;gap:4px}
+  .schedule-adjust{width:44px;height:44px;padding:0}
+  .schedule-adjust span{display:none}
   .calendar-nav{display:grid;grid-template-columns:44px auto 44px minmax(0,1fr);width:100%;gap:6px}
+  .schedule-controls .calendar-nav{grid-column:1/-1}
   .calendar-nav .icon-btn{width:44px;height:44px}
   .calendar-today{height:44px}
   .calendar-jump{width:100%;height:44px}
-  .seg{display:flex;overflow-x:auto;max-width:none;width:100%;scrollbar-width:none}
+  .seg{display:flex;overflow-x:auto;max-width:none;width:100%;height:44px;scrollbar-width:none}
+  .schedule-controls:not(:has(.schedule-action-group)) .seg{grid-column:1/-1}
   .seg::-webkit-scrollbar{display:none}
   .seg-btn{flex:1 1 0;min-width:48px;min-height:40px;padding:7px 4px;font-size:13px;white-space:nowrap}
   .ws-dash{height:calc(100dvh - 56px - env(safe-area-inset-top));padding:12px max(16px,env(safe-area-inset-right)) calc(88px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
@@ -977,6 +1013,26 @@ button.dp:hover{border-color:var(--line)}
   .ws-dash .tl-panel .panel-head{min-height:52px}
   .ws-dash .tl-panel .panel-head p{display:none}
   .ws-dash .schedule-mobile{flex:1;min-height:0;overflow-y:auto}
+  .day-status-board{border-width:0 0 1px}
+  .day-status-head{min-height:38px;padding:6px 10px}
+  .day-status-head strong{font-size:14px}
+  .day-status-head>span{font-size:10px}
+  .day-status-groups{grid-template-columns:1fr}
+  .day-status-section{padding:8px 10px}
+  .day-person-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+  .day-person-tile{min-height:60px;padding:8px 9px}
+  .day-person-tile strong{font-size:14px}
+  .day-person-tile .day-person-state,.day-person-tile small{font-size:11px}
+  .day-pending-strip{min-height:52px;padding:4px 10px}
+  .day-pending-strip>button{min-height:44px;height:44px}
+  .day-matrix-panel{margin:10px 10px 16px}
+  .day-matrix-head{min-height:46px}
+  .day-matrix-head strong{font-size:14px}
+  .day-matrix-head span{font-size:11px}
+  .day-matrix{min-width:calc(52px + var(--staff) * 94px)}
+  .day-matrix-row{grid-template-columns:52px repeat(var(--staff),minmax(94px,1fr));min-height:46px}
+  .day-matrix-person,.day-matrix-cell{min-height:46px}
+  .day-matrix-person strong,.day-matrix-cell.task strong{font-size:12px}
   .planner-range{display:flex;flex-direction:column;overflow-y:auto;padding:0;background:transparent;gap:10px}
   .planner-calendar,.planner-inspector,.workload-panel{flex:none;border-radius:14px}
   .planner-calendar{padding:8px;overflow:visible}
@@ -1009,11 +1065,6 @@ button.dp:hover{border-color:var(--line)}
   .workload-card strong{font-size:14px}
   .workload-card>span{font-size:13px}
   .workload-card small{font-size:11px}
-  .agenda-person-head{flex-wrap:wrap}
-  .agenda-person-head>.tag{order:4;margin-left:42px}
-  .agenda-status{order:5}
-  .agenda-add{margin-left:auto}
-  .agenda-jobs{padding-left:52px}
   .modal-mask:not(.cfm-mask){place-items:end center;padding:max(12px,env(safe-area-inset-top)) 0 0}
   .modal-mask:not(.cfm-mask) .modal{width:100%;max-width:none;max-height:calc(var(--mobile-viewport-height,100dvh) - max(12px,env(safe-area-inset-top)));overflow-y:auto;overscroll-behavior:contain;border-radius:24px 24px 0 0;border-bottom:0;padding:18px max(18px,env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
   .schedule-modal{width:100%;max-height:calc(var(--mobile-viewport-height,100dvh) - max(12px,env(safe-area-inset-top)));display:flex;flex-direction:column;overflow:hidden!important}
@@ -1128,7 +1179,7 @@ button.dp:hover{border-color:var(--line)}
   .tl-panel .panel-head{display:flex;flex-wrap:nowrap;align-items:center}
   .schedule-head>div:first-child{width:auto;min-width:112px}
   .schedule-controls{width:auto;flex:1;flex-direction:row;align-items:center;justify-content:flex-end}
-  .schedule-adjust{order:0;width:auto;flex:0 0 auto}
+  .schedule-adjust{width:44px;flex:0 0 44px}
 }
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 </style>
@@ -1158,7 +1209,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802i";
+const APP_VERSION="v0802j";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2015,11 +2066,9 @@ function dayGantt(dateStr){
   };
   const head=`<div class="dg-row dg-head"><div class="dg-time">时段</div>${mem.map(p=>{const av=isToday?personAvail(p):{cls:"s-free"};const assignment=effectiveShift(p,dateStr);const absence=absenceTypeOn(p,dateStr);const sr2=shiftRange(p);const sh=assignment&&assignment.is_off?"排休":absence?(absence==="travel"?"出差":"请假"):sr2?((sr2[0]%60===0&&sr2[1]%60===0)?`${Math.floor(sr2[0]/60)%24}-${Math.floor(sr2[1]/60)%24}点班`:`${fmtHM3(sr2[0])}-${fmtHM3(sr2[1])}班`):"未排班";const inner=`<span class="dg-mline"><span class="status-dot ${av.cls}"></span><span class="nm">${esc(p.name)}</span></span><em class="dg-sh">${sh}${assignment&&assignment.source==="override"?" · 调班":""}</em>`;const canPlan=canQ&&dateStr>=todayStr()&&assignment&&!assignment.is_off&&!absence;return canPlan?`<button class="dg-mem can" data-plan-person="${esc(p.open_id)}" data-plan-date="${dateStr}" title="给 ${esc(p.name)} 安排 ${dateStr} 的任务 · ${sh}">${inner}</button>`:`<div class="dg-mem" title="${sh}">${inner}</div>`;}).join("")}</div>`;
   const body=H.map(h=>{const nc=(isToday&&nowN!=null&&nowN>=h&&nowN<h+60)?" now":"";const pc=(isToday&&nowN!=null&&h+60<=nowN)?" pastrow":"";return `<div class="dg-row${nc}${pc}" data-h="${h}"><div class="dg-time">${hourLbl(h)}:00</div>${mem.map(p=>cell(p,h)).join("")}</div>`;}).join("");
-  const pending=dayOrders.filter(o=>!o.assignee_id);
-  const pendBar=pending.length?`<div class="dg-pend">${icon("alert-circle",true)}<b>待派工 ${pending.length} 单</b>${pending.slice(0,8).map(o=>`<button class="dg-pchip" style="--gc:${groupColor(grp)}" data-detail="1" data-oid="${o.id}" data-note="${esc(o.note||"")}" data-media="${esc(o.media||"")}" data-kind="${esc(o.media_kind||"audio")}" data-team="${esc(o.team)}"><b>${esc(o.arrive||"--")}</b> ${o.room?esc(o.room):esc(o.team)}·${esc(o.task_type)}</button>`).join("")}${pending.length>8?` <span class="dim">+${pending.length-8}</span>`:""}</div>`:"";
   const legend=`<div class="ag-legend"><span><i class="lf"></i>有空可约</span><span><i style="background:${groupColor(grp)};display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px"></i>已排的单(点开可改派/完成)</span><span><i class="lo"></i>下班/不可派</span>${isToday?`<span><i class="lb"></i>当前时间线 · 线上方为已过(变灰)</span>`:""}</div>`;
   const endRow=`<div class="dg-row dg-end"><div class="dg-time">${hourLbl(hi)}:00</div><div class="dg-endlab">最晚下班线 ${hourLbl(hi)}:00 · 上面 ${hourLbl(hi-60)}:00 那格可约到这条线 · 各人下班时间见列头</div></div>`;
-  return `${pendBar}<div class="dg-wrap"><div class="dg" data-today="${isToday?1:0}" style="--mem:${mem.length}">${head}${body}${endRow}</div></div>${legend}`;
+  return `<div class="dg-wrap"><div class="dg" data-today="${isToday?1:0}" style="--mem:${mem.length}">${head}${body}${endRow}</div></div>${legend}`;
 }
 function scheduleKey(range=schedView,date=schedDate||todayStr()){
   if(range==="month")return`${range}|${date.slice(0,7)}`;
@@ -2102,33 +2151,120 @@ function weekView(d){
   const columns=days.map(dateStr=>{const list=orders.filter(order=>order.date===dateStr).sort((a,b)=>String(a.arrive||"").localeCompare(String(b.arrive||"")));return `<section class="week-day ${dateStr===d.today?"today":""} ${dateStr===schedDate?"selected":""}"><button class="week-day-head" data-select-calendar-day="${dateStr}"><strong>${dateStr===d.today?"今天":weekdayLabel(dateStr)}</strong><span>${dateStr.slice(5)}</span></button><div class="week-day-tasks">${list.map(order=>calendarTask(order)).join("")||`<span class="week-day-empty">无任务</span>`}</div></section>`}).join("");
   return `<div class="planner-range"><section class="planner-calendar"><div class="week-grid">${columns}</div></section>${selectedDayPanel(d,schedDate)}${workloadPanel(d,schedDate)}</div>`
 }
-function assignmentLabel(assignment){
-  if(!assignment)return["未排班","s-off"];
-  if(assignment.absence_type)return[assignment.absence_type==="travel"?"出差":"请假",assignment.absence_type==="travel"?"s-check":"s-rest"];
-  if(assignment.is_off)return["排休","s-off"];
-  return[`${assignment.name||"未排班"}${assignment.source==="override"?" · 调班":""}`,"s-shift"];
-}
-function mobileDayAgenda(d,dateStr){
+function scheduleMinute(value){const minute=toMinutes(value);return minute==null?null:(minute<300?minute+1440:minute)}
+function scheduleClock(minute){const value=((minute%1440)+1440)%1440;return `${String(Math.floor(value/60)).padStart(2,"0")}:${String(value%60).padStart(2,"0")}`}
+function dayRoster(d,dateStr){
   const grp=boardGrp||scopeGroup()||(myGroups()[0]||"");
-  const members=(state.staff||[]).filter(person=>person.grp===grp&&!person.intern);
+  const members=(state.staff||[]).filter(person=>person.grp===grp&&!person.intern).sort((a,b)=>(b.lead?1:0)-(a.lead?1:0)||String(a.name).localeCompare(String(b.name)));
   const assignments=(d.assignments||[]).filter(item=>item.date===dateStr&&item.grp===grp);
-  const orders=(d.orders||[]).filter(order=>order.date===dateStr&&order.grp===grp&&!['cancelled','abnormal'].includes(order.status));
-  const canManage=Boolean(me.role==="admin"||me.lead);
-  const working=assignments.filter(item=>!item.is_off&&!item.absence_type).length;
-  const adjusted=assignments.filter(item=>item.source==="override"||item.is_off).length;
-  const pending=orders.filter(order=>!order.assignee_id);
-  const rows=members.map(person=>{
+  const orders=(d.orders||[]).filter(order=>order.date===dateStr&&order.grp===grp&&!['cancelled','abnormal'].includes(order.status)).sort((a,b)=>String(a.arrive||"").localeCompare(String(b.arrive||""))||a.id-b.id);
+  const today=dateStr===todayStr(),now=today?scheduleMinute(scheduleClock(nowMinutes())):null;
+  const orderTimes=order=>{const start=scheduleMinute(order.arrive);return start==null?null:{order,start,end:start+Math.max(Number(order.minutes)||30,15)}};
+  const people=members.map(person=>{
     const assignment=assignments.find(item=>item.worker_id===person.open_id)||effectiveShift(person,dateStr);
-    const [label,labelClass]=assignmentLabel(assignment);
-    const jobs=orders.filter(order=>order.assignee_id===person.open_id).sort((a,b)=>String(a.arrive).localeCompare(String(b.arrive)));
-    const status=dateStr===todayStr()?personAvail(person):null;
-    const canPlan=canManage&&dateStr>=todayStr()&&assignment&&!assignment.is_off&&!assignment.absence_type;
-    const jobHtml=jobs.length?jobs.map(order=>`<button class="agenda-job" data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(order.media_kind||"audio")}" data-team="${esc(order.team)}"><b>${esc(order.arrive||"--:--")}</b><span>${esc(order.room||order.team)} · ${esc(order.task_type)}</span>${orderTag(order)}</button>`).join(""):`<span class="agenda-empty">暂无任务</span>`;
-    return `<article class="agenda-person"><div class="agenda-person-head">${avatar(person)}<div class="agenda-who"><strong>${esc(person.name)}${person.lead?' <span class="lead-tag">组长</span>':""}</strong><span>${assignment&&!assignment.is_off?`${esc(assignment.start)}–${esc(assignment.end)}`:"当天不上班"}</span></div><span class="tag ${labelClass}"><span class="status-dot"></span>${esc(label)}</span>${status?`<span class="agenda-status ${status.cls}"><span class="status-dot"></span>${status.label}</span>`:""}${canPlan?`<button class="text-btn agenda-add" data-plan-person="${esc(person.open_id)}" data-plan-date="${dateStr}">${icon("plus",true)}派单</button>`:""}</div><div class="agenda-jobs">${jobHtml}</div></article>`;
-  }).join("");
-  const pendingHtml=pending.length?`<div class="agenda-pending"><strong>${icon("alert-circle",true)}待派工 ${pending.length} 单</strong>${pending.map(order=>`<button data-detail="1" data-oid="${order.id}" data-note="${esc(order.note||"")}" data-media="${esc(order.media||"")}" data-kind="${esc(order.media_kind||"audio")}" data-team="${esc(order.team)}"><b>${esc(order.arrive||"--:--")}</b>${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
-  return `<div class="mobile-agenda"><div class="agenda-summary"><span><b>${working}</b> 班次可用</span><span><b>${orders.length}</b> 真实任务</span><span class="${pending.length?"warn":""}"><b>${pending.length}</b> 待派</span><span><b>${adjusted}</b> 调班/排休</span></div>${pendingHtml}${rows||empty("users","本组暂无可排班成员")}</div>`;
+    const absence=(assignment&&assignment.absence_type)||absenceTypeOn(person,dateStr);
+    const start=assignment?scheduleMinute(assignment.start):null;
+    let end=assignment?scheduleMinute(assignment.end):null;
+    if(start!=null&&end!=null&&end<=start)end+=1440;
+    const jobs=orders.filter(order=>order.assignee_id===person.open_id).map(orderTimes).filter(Boolean);
+    const running=jobs.find(job=>["in_progress","completion_review"].includes(job.order.status));
+    const current=running||jobs.find(job=>job.order.status==="assigned"&&now!=null&&job.start<=now&&job.end>now);
+    const next=today?jobs.find(job=>!["completed"].includes(job.order.status)&&job.start>now):jobs[0];
+    let kind="away",label="未排班",detail="没有可用班次",order=null;
+    if(current){
+      kind="busy";order=current.order;
+      label=running?"任务中":"已预约";
+      detail=`${current.order.room||current.order.team} · ${current.order.task_type} · 至 ${scheduleClock(current.end)}`;
+    }else if(today&&(person.status==="busy"||person.task)){
+      kind="busy";label="任务中";detail=person.task||"当前正在处理任务";
+    }else if(today&&person.status==="check"){
+      label="巡检中";detail=person.task||"暂不可派";
+    }else if(absence){
+      label=absence==="travel"?"出差":"请假";detail="当天不参与排班";
+    }else if(!assignment||start==null||end==null){
+      label="未排班";detail="未设置有效班次";
+    }else if(assignment.is_off){
+      label="排休";detail="当天不上班";
+    }else if(today&&now<start){
+      label="未到班";detail=`${scheduleClock(start)} 开始上班`;
+    }else if(today&&now>=end){
+      label="已下班";detail=`班次 ${scheduleClock(start)}–${scheduleClock(end)}`;
+    }else if(today&&person.status==="off"){
+      label="已离岗";detail=`班次 ${scheduleClock(start)}–${scheduleClock(end)}`;
+    }else if(today&&person.status==="rest"){
+      label="小休";detail="当前暂不可派";
+    }else if(!today&&jobs.length){
+      kind="busy";order=jobs[0].order;label=`已排 ${jobs.length} 单`;
+      detail=`${jobs[0].order.arrive} ${jobs[0].order.room||jobs[0].order.team} · ${jobs[0].order.task_type}`;
+    }else{
+      kind="free";label=today?"现在可派":"当天有空";
+      detail=today?(next?`空闲至 ${scheduleClock(next.start)} · 后续 ${next.order.room||next.order.team}`:`空闲至 ${scheduleClock(end)}`):`无任务 · 班次 ${scheduleClock(start)}–${scheduleClock(end)}`;
+    }
+    return{person,assignment,absence,start,end,jobs,kind,label,detail,order}
+  });
+  return{grp,members,assignments,orders,people,pending:orders.filter(order=>!order.assignee_id),today,now}
 }
+function dayPersonTile(item,dateStr){
+  const {person,kind,label,detail,order}=item;
+  const canManage=Boolean(me.role==="admin"||me.lead);
+  const content=`<strong>${esc(person.name)}${person.lead?` <span class="day-lead">组长</span>`:""}</strong><span class="day-person-state">${esc(label)}</span><small>${esc(detail)}</small>`;
+  if(kind==="busy"&&order)return`<button class="day-person-tile ${kind}" ${scheduleDetailAttrs(order)} aria-label="查看${esc(person.name)}的任务：${esc(detail)}">${content}</button>`;
+  if(kind==="free"&&canManage&&dateStr>=todayStr()){
+    const action=dateStr===todayStr()?`data-quick="${esc(person.open_id)}"`:`data-plan-person="${esc(person.open_id)}" data-plan-date="${dateStr}"`;
+    return`<button class="day-person-tile ${kind}" ${action} aria-label="给${esc(person.name)}安排任务，${esc(detail)}">${content}</button>`
+  }
+  return`<div class="day-person-tile ${kind}">${content}</div>`
+}
+function dayStatusBoard(d,dateStr){
+  const roster=dayRoster(d,dateStr);
+  if(!roster.people.length)return`<div class="day-status-board">${empty("users","本组暂无可排班成员")}</div>`;
+  const groups=[
+    ["free","可立即安排","s-free"],
+    ["busy",roster.today?"正在工作 / 当前占用":"当天已有任务","s-busy"],
+    ["away",roster.today?"未上班 / 暂不可派":"当天不在岗","s-off"]
+  ];
+  const sections=groups.map(([kind,title,statusClass])=>{
+    const people=roster.people.filter(item=>item.kind===kind);
+    if(!people.length)return"";
+    return`<section class="day-status-section ${kind}"><h3><span class="status-dot ${statusClass}"></span>${title}<b>${people.length}</b></h3><div class="day-person-grid">${people.map(item=>dayPersonTile(item,dateStr)).join("")}</div></section>`
+  }).join("");
+  const free=roster.people.filter(item=>item.kind==="free").length,busy=roster.people.filter(item=>item.kind==="busy").length,away=roster.people.length-free-busy;
+  const pending=roster.pending.length?`<div class="day-pending-strip"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
+  return`<section class="day-status-board"><div class="day-status-head"><strong>${icon(roster.today?"radio":"calendar-days",true)}${roster.today?`现在 ${scheduleClock(roster.now)}`:fmtDateCn(dateStr)}</strong><span>可派 ${free} · 任务 ${busy} · 不可派 ${away}</span></div><div class="day-status-groups">${sections}</div>${pending}</section>`
+}
+function dayMatrix(d,dateStr){
+  const roster=dayRoster(d,dateStr),canManage=Boolean(me.role==="admin"||me.lead);
+  if(!roster.people.length)return"";
+  let first=480,last=1440;
+  roster.people.forEach(item=>{if(item.start!=null)first=Math.min(first,item.start);if(item.end!=null)last=Math.max(last,item.end);item.jobs.forEach(job=>{first=Math.min(first,job.start);last=Math.max(last,job.end)})});
+  first=Math.max(300,Math.floor(first/60)*60);last=Math.min(1680,Math.ceil(last/60)*60);
+  const hours=[];for(let minute=first;minute<last;minute+=60)hours.push(minute);
+  const personHead=item=>{
+    const shift=item.start!=null&&item.end!=null?`${scheduleClock(item.start)}–${scheduleClock(item.end)}`:item.label;
+    const content=`<strong>${esc(item.person.name)}</strong><small>${esc(shift)}</small>`;
+    const canPlan=canManage&&dateStr>=todayStr()&&item.assignment&&!item.assignment.is_off&&!item.absence;
+    return canPlan?`<button class="day-matrix-person" data-plan-person="${esc(item.person.open_id)}" data-plan-date="${dateStr}" aria-label="给${esc(item.person.name)}安排${esc(fmtDateCn(dateStr))}的任务">${content}</button>`:`<div class="day-matrix-person">${content}</div>`
+  };
+  const cell=(item,hour)=>{
+    const covered=item.jobs.filter(job=>job.start<hour+60&&job.end>hour);
+    if(covered.length){
+      const job=covered[0],order=job.order,extra=covered.length>1?` +${covered.length-1}`:"";
+      return`<button class="day-matrix-cell task ${order.status==="completed"?"done":""}" style="--gc:${groupColor(roster.grp)}" ${scheduleDetailAttrs(order)} aria-label="${esc(item.person.name)}，${esc(order.arrive)}到${scheduleClock(job.end)}，${esc(order.room||order.team)}，${esc(order.task_type)}"><strong>${esc(order.room||order.team)}${extra}</strong><small>${esc(order.task_type)}</small></button>`
+    }
+    const onShift=item.start!=null&&item.end!=null&&!item.absence&&!item.assignment?.is_off&&item.start<hour+60&&item.end>hour;
+    if(!onShift)return`<div class="day-matrix-cell off" aria-label="${esc(item.person.name)}该时段不在班"></div>`;
+    const past=roster.today&&hour+60<=roster.now;
+    if(canManage&&dateStr>=todayStr()&&!past){
+      const start=Math.max(hour,item.start,roster.today?roster.now:hour);
+      return`<button class="day-matrix-cell" data-book="${esc(item.person.open_id)}|${dateStr}|${scheduleClock(start)}|${scheduleClock(item.end)}" aria-label="给${esc(item.person.name)}安排${scheduleClock(start)}的任务">可排</button>`
+    }
+    return`<div class="day-matrix-cell${past?" past":""}">空</div>`
+  };
+  const head=`<div class="day-matrix-row day-matrix-headrow"><div class="day-matrix-time">时段</div>${roster.people.map(personHead).join("")}</div>`;
+  const rows=hours.map(hour=>`<div class="day-matrix-row ${roster.today&&roster.now>=hour&&roster.now<hour+60?"current":""}"><div class="day-matrix-time">${scheduleClock(hour)}</div>${roster.people.map(item=>cell(item,hour)).join("")}</div>`).join("");
+  return`<section class="day-matrix-panel"><div class="day-matrix-head"><strong>全天人员排班表</strong><span>左右滑动看所有人 · 点任务看详情</span></div><div class="day-matrix-scroll"><div class="day-matrix" style="--staff:${roster.people.length}">${head}${rows}</div></div></section>`
+}
+function mobileDayWorktable(d,dateStr){return`${dayStatusBoard(d,dateStr)}${dayMatrix(d,dateStr)}`}
 function schedulePanel(){
   if(!schedDate)schedDate=todayStr();
   const d0=todayStr(),isDay=schedView==="day";
@@ -2145,16 +2281,17 @@ function schedulePanel(){
     const count=scheduleOrders(schedData).filter(order=>order.date===schedDate).length;
     const label=schedDate===d0?"今天":"";
     sub=`${label?label+" ":""}${fmtDateCn(schedDate)} · ${gname} · ${count} 单`;
-    body=`<div class="schedule-desktop">${dayGantt(schedDate)}</div><div class="schedule-mobile">${mobileDayAgenda(schedData,schedDate)}</div>`;
+    body=`<div class="schedule-desktop">${dayStatusBoard(schedData,schedDate)}${dayGantt(schedDate)}</div><div class="schedule-mobile">${mobileDayWorktable(schedData,schedDate)}</div>`;
   }else{
     const count=scheduleOrders(schedData).length;
     sub=schedView==="week"?`${schedData.from.slice(5)} – ${schedData.to.slice(5)} · ${gname} ${count} 单`:`${schedData.from.slice(0,7)} · ${gname} ${count} 单`;
     body=schedView==="week"?weekView(schedData):monthView(schedData);
   }
   const manage=me&&(me.role==="admin"||me.lead);
-  const adjust=manage&&isDay?`<button class="text-btn schedule-adjust" data-schedule-edit="${schedDate}">${icon("calendar-cog",true)}班次可用性</button>`:"";
-  const plan=manage&&isDay&&schedDate>=todayStr()?`<button class="text-btn amber schedule-adjust" data-plan-day="${schedDate}">${icon("plus",true)}安排任务</button>`:"";
-  return `<section class="panel tl-panel"><div class="panel-head schedule-head"><div><h2>${esc(gname)}任务日历</h2><p>${esc(sub)}</p></div><div class="schedule-controls">${nav}${seg}${adjust}${plan}</div></div>${body}</section>`;
+  const adjust=manage&&isDay?`<button class="text-btn schedule-adjust" data-schedule-edit="${schedDate}" aria-label="调整${esc(fmtDateCn(schedDate))}的班次可用性" title="班次可用性">${icon("calendar-cog",true)}<span>班次可用性</span></button>`:"";
+  const plan=manage&&isDay&&schedDate>=todayStr()?`<button class="text-btn amber schedule-adjust" data-plan-day="${schedDate}" aria-label="安排${esc(fmtDateCn(schedDate))}的任务" title="安排任务">${icon("plus",true)}<span>安排任务</span></button>`:"";
+  const actions=adjust||plan?`<div class="schedule-action-group">${adjust}${plan}</div>`:"";
+  return `<section class="panel tl-panel"><div class="panel-head schedule-head"><div><h2>${esc(gname)}${isDay?"人员工作台":"任务日历"}</h2><p>${esc(sub)}</p></div><div class="schedule-controls">${nav}${seg}${actions}</div></div>${body}</section>`;
 }
 function moveScheduleDate(direction){
   const current=new Date((schedDate||todayStr())+"T00:00:00");

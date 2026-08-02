@@ -646,7 +646,27 @@ async function auditMobileAccount(page, profile) {
   await admin.evaluate(() => load());
   await admin.setViewportSize({ width: 390, height: 844 });
   await admin.locator('.mobile-nav [data-page="overview"]').click();
-  await admin.locator(".schedule-mobile .agenda-summary").waitFor();
+  await admin.locator(".schedule-mobile .day-status-board").waitFor();
+  const dayWorktable = await admin.evaluate(() => {
+    const mobile = document.querySelector(".schedule-mobile");
+    const group = boardGrp || scopeGroup() || myGroups()[0] || "";
+    const expectedPeople = state.staff.filter(person => person.grp === group && !person.intern).length;
+    const board = mobile.querySelector(".day-status-board");
+    const matrix = mobile.querySelector(".day-matrix");
+    return {
+      expectedPeople,
+      statusPeople: board?.querySelectorAll(".day-person-tile").length || 0,
+      matrixPeople: matrix?.querySelectorAll(".day-matrix-headrow .day-matrix-person").length || 0,
+      matrixRows: matrix?.querySelectorAll(".day-matrix-row:not(.day-matrix-headrow)").length || 0,
+      legacyCards: mobile.querySelectorAll(".agenda-summary,.agenda-person").length,
+      boardBeforeMatrix: Boolean(board && matrix && (board.compareDocumentPosition(matrix) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      freeFirst: !board?.querySelector(".day-status-section.free") || board.querySelector(".day-status-section")?.classList.contains("free"),
+    };
+  });
+  if (dayWorktable.statusPeople !== dayWorktable.expectedPeople || dayWorktable.matrixPeople !== dayWorktable.expectedPeople ||
+      dayWorktable.matrixRows < 12 || dayWorktable.legacyCards || !dayWorktable.boardBeforeMatrix || !dayWorktable.freeFirst) {
+    throw new Error(`手机首页没有按人员状态和全天矩阵完整呈现：${JSON.stringify(dayWorktable)}`);
+  }
   if (await admin.locator(".mobile-nav .nav-btn").count() !== 4) throw new Error("管理员手机底栏不是 4 个主入口");
   if (await admin.locator(".schedule-desktop").isVisible()) throw new Error("手机端仍显示压缩的桌面排班网格");
   const safeAreaCoverage = await admin.evaluate(() => {
@@ -752,7 +772,7 @@ async function auditMobileAccount(page, profile) {
   if (await admin.locator("#settingsSectionSelect").inputValue() !== "任务分类与工时") throw new Error("空任务引导未打开任务规则配置");
   await admin.evaluate(() => load());
   await admin.evaluate(() => navigatePage("overview"));
-  await admin.locator(".schedule-mobile .agenda-summary").waitFor();
+  await admin.locator(".schedule-mobile .day-status-board").waitFor();
   const mobileOfflineState = await admin.evaluate(() => {
     setConnectionState(false, false);
     const refresh = document.getElementById("refresh");
@@ -795,7 +815,7 @@ async function auditMobileAccount(page, profile) {
   }
   await admin.locator('[data-schedview="day"]').click();
   await admin.locator('[data-schedule-today]').click();
-  await admin.locator(".schedule-mobile .agenda-summary").waitFor();
+  await admin.locator(".schedule-mobile .day-status-board").waitFor();
   await admin.locator("[data-schedule-edit]").click();
   await admin.getByText("保存当天排班", { exact: true }).waitFor();
   await admin.waitForFunction(() => document.activeElement?.matches('[data-close][aria-label="关闭"]'));
@@ -836,7 +856,7 @@ async function auditMobileAccount(page, profile) {
   }
   await admin.keyboard.press("Escape");
   await admin.evaluate(() => load());
-  await admin.locator(".schedule-mobile .agenda-summary").waitFor();
+  await admin.locator(".schedule-mobile .day-status-board").waitFor();
   await admin.locator("[data-mobile-more]").click();
   await admin.getByText("更多功能", { exact: true }).waitFor();
   const mobileSettings = admin.locator(".mobile-more-sheet").getByRole("button", { name: /配置/ });
@@ -1103,7 +1123,7 @@ async function auditMobileAccount(page, profile) {
   await auditMobilePages(admin, "admin/320", ["overview", "request", "dispatch", "crew", "stats", "settings", "audit"]);
   await admin.setViewportSize({ width: 768, height: 1024 });
   await admin.evaluate(() => navigatePage("overview"));
-  await admin.locator(".schedule-mobile .agenda-summary").waitFor();
+  await admin.locator(".schedule-mobile .day-status-board").waitFor();
   await auditViewportLayout(admin, "admin/tablet/portrait", true);
   await auditMobileLayout(admin, "admin/tablet/portrait");
   await admin.screenshot({ path: "/tmp/dispatch-admin-tablet-portrait.png", fullPage: true });
@@ -1141,13 +1161,13 @@ async function auditMobileAccount(page, profile) {
   await lead.locator('[data-close]').last().click();
   await lead.setViewportSize({ width: 390, height: 844 });
   await lead.locator('.mobile-nav [data-page="overview"]').click();
-  await lead.locator(".schedule-mobile .agenda-summary").waitFor();
+  await lead.locator(".schedule-mobile .day-status-board").waitFor();
   await auditMobileLayout(lead, "lead/mobile/overview");
   await lead.screenshot({ path: "/tmp/dispatch-lead-mobile-overview.png", fullPage: true });
   const scheduleTestDate = await lead.evaluate(() => addDaysStr(2));
   await lead.locator("#scheduleDateJump").fill(scheduleTestDate);
   await lead.locator("#scheduleDateJump").dispatchEvent("change");
-  await lead.locator(".schedule-mobile .agenda-summary").waitFor();
+  await lead.locator(".schedule-mobile .day-status-board").waitFor();
   await lead.locator("[data-schedule-edit]").click();
   const staffSchedule = lead.locator('[data-schedule-worker="test:staff"]');
   await staffSchedule.selectOption("off");
@@ -1213,7 +1233,7 @@ async function auditMobileAccount(page, profile) {
   }
   await lead.setViewportSize({ width: 844, height: 390 });
   await lead.evaluate(() => navigatePage("overview"));
-  await lead.locator(".schedule-mobile .agenda-summary").waitFor();
+  await lead.locator(".schedule-mobile .day-status-board").waitFor();
   const landscapeSchedule = await lead.evaluate(() => {
     const schedule = document.querySelector(".schedule-mobile");
     const rangeButtons = [...document.querySelectorAll("[data-schedview]")].filter(button => {
