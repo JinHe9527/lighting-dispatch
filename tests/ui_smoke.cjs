@@ -696,6 +696,22 @@ async function auditMobileAccount(page, profile) {
       !dayWorktable.noHorizontalOverflow) {
     throw new Error(`手机首页没有完整呈现紧凑的连续三日人员时间轴：${JSON.stringify(dayWorktable)}`);
   }
+  const pointerTrack = admin.locator('[data-mobile-day-section]:not([hidden]) [data-timeline-track]').first();
+  const pointerTrackBox = await pointerTrack.boundingBox();
+  await admin.mouse.move(pointerTrackBox.x + pointerTrackBox.width * .43, pointerTrackBox.y + pointerTrackBox.height / 2);
+  const hoverCursor = await admin.evaluate(() => {
+    const timeline=document.querySelector('[data-mobile-day-section]:not([hidden]) .mobile-timeline');
+    const axis=timeline.querySelector('.mobile-timeline-axis'),layer=timeline.querySelector('[data-timeline-hover-layer]'),line=layer.querySelector('.mobile-timeline-hover-line'),label=layer.querySelector('.mobile-timeline-hover-label');
+    const minute=toMinutes(label.textContent);
+    return {hidden:layer.hidden,label:label.textContent,snapped:minute!=null&&minute%TIMELINE_SNAP_MINUTES===0,lineHeight:Math.round(line.getBoundingClientRect().height),expectedHeight:Math.round(timeline.getBoundingClientRect().height-axis.getBoundingClientRect().height)};
+  });
+  if (hoverCursor.hidden || !/^\d{2}:\d{2}$/.test(hoverCursor.label || "") || !hoverCursor.snapped || hoverCursor.lineHeight !== hoverCursor.expectedHeight) {
+    throw new Error(`时间轴鼠标点位没有显示对应时间：${JSON.stringify(hoverCursor)}`);
+  }
+  await admin.mouse.move(1,1);
+  if (!await admin.locator('[data-mobile-day-section]:not([hidden]) [data-timeline-hover-layer]').evaluate(layer => layer.hidden)) {
+    throw new Error("鼠标离开时间轴后点位时间仍未隐藏");
+  }
   await admin.locator('[data-mobile-day]').nth(1).click();
   const tomorrowJump = await admin.evaluate(() => ({
     active: document.querySelector('[data-mobile-day].active')?.dataset.mobileDay,
@@ -714,6 +730,13 @@ async function auditMobileAccount(page, profile) {
       tomorrowJump.adjustDate !== tomorrowJump.target || tomorrowJump.planDate !== tomorrowJump.target || tomorrowJump.nowLayers !== 1 ||
       !/^当前 \d{2}:\d{2}$/.test(tomorrowJump.nowLabel || "") || !tomorrowJump.taskLabel || tomorrowJump.taskLabelWidth < 28 || tomorrowJump.taskRangeHeight !== 4 || tomorrowJump.legacyTaskTime) {
     throw new Error(`明日排班快捷切换失败：${JSON.stringify(tomorrowJump)}`);
+  }
+  const taskPointer = admin.locator('[data-mobile-day-section]:not([hidden]) .mobile-timeline-job').first();
+  const taskPointerBox = await taskPointer.boundingBox();
+  await admin.mouse.move(taskPointerBox.x + taskPointerBox.width / 2, taskPointerBox.y + taskPointerBox.height / 2);
+  const taskHoverLabel = await admin.locator('[data-mobile-day-section]:not([hidden]) .mobile-timeline-hover-label').innerText();
+  if (!/号 · \d{2}:\d{2}–\d{2}:\d{2}/.test(taskHoverLabel)) {
+    throw new Error(`任务悬停没有显示直播间和起止时间：${taskHoverLabel}`);
   }
   const timelineOrderId = await admin.evaluate(() => {
     const track = document.querySelector('[data-mobile-day-section]:not([hidden]) [data-timeline-track][data-timeline-jobs]:not([data-timeline-jobs=""])');

@@ -867,6 +867,12 @@ button.mobile-timeline-track:hover{background-color:var(--fill-2)}
 .mobile-timeline-now-layer{position:absolute;z-index:4;top:0;right:8px;bottom:0;left:var(--name-col);pointer-events:none}
 .mobile-timeline-now{position:absolute;top:var(--axis-height);bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
 .mobile-timeline-now-label{position:absolute;top:4px;left:var(--left);padding:1px 4px;border-radius:4px;background:var(--surface);color:var(--accent);font:700 9px/15px var(--mono);white-space:nowrap;transform:translateX(-50%);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 24%,transparent)}
+.mobile-timeline-hover-layer{position:absolute;z-index:5;top:0;right:8px;bottom:0;left:var(--name-col);pointer-events:none}
+.mobile-timeline-hover-line{position:absolute;top:var(--axis-height);bottom:0;left:var(--left);width:0;border-left:1px dashed color-mix(in srgb,var(--text) 72%,transparent)}
+.mobile-timeline-hover-label{position:absolute;top:4px;left:var(--left);max-width:min(240px,80%);height:19px;padding:0 6px;border:1px solid color-mix(in srgb,var(--text) 28%,var(--line));border-radius:4px;background:var(--text);color:var(--surface);display:flex;align-items:center;font:700 9px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:translateX(-50%);box-shadow:0 2px 8px rgba(0,0,0,.16)}
+.mobile-timeline-hover-layer.edge-start .mobile-timeline-hover-label{left:0;transform:none}
+.mobile-timeline-hover-layer.edge-end .mobile-timeline-hover-label{right:0;left:auto;transform:none}
+@media(hover:hover){.mobile-timeline-row:has(.mobile-timeline-track:hover){background:color-mix(in srgb,var(--accent) 4%,var(--surface))}.mobile-timeline-row:has(.mobile-timeline-track:hover) .mobile-timeline-who strong{color:var(--accent)}}
 .schedule-desktop .day-status-board{margin-bottom:10px}
 .schedule-modal{max-width:620px}
 .schedule-form{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
@@ -1314,7 +1320,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802q";
+const APP_VERSION="v0802r";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2359,6 +2365,7 @@ function mobileDateTitle(dateStr){
   return weekdayLabel(dateStr)
 }
 const ROOM_COLOR_ANGLE=137.508;
+const TIMELINE_SNAP_MINUTES=15;
 function timelineTaskColor(order){
   const key=String(order.room||order.team||order.id),number=key.match(/\d+/),seed=number?Number(number[0]):[...key].reduce((sum,char)=>(sum*31+char.charCodeAt(0))>>>0,0);
   // 黄金角分配色相，让相邻直播间保持稳定且明显不同。
@@ -2393,6 +2400,11 @@ function mobileTimelineHasGap(item,now){
   return item.end-cursor>=15
 }
 function mobileTimelinePercent(minute,range){return Math.max(0,Math.min(100,(minute-range.first)/(range.last-range.first)*100))}
+function timelinePointerMinute(track,clientX){
+  const first=Number(track.dataset.timelineFirst),last=Number(track.dataset.timelineLast),rect=track.getBoundingClientRect();
+  const raw=first+Math.max(0,Math.min(1,(clientX-rect.left)/rect.width))*(last-first);
+  return Math.max(first,Math.min(last,Math.ceil((raw-.001)/TIMELINE_SNAP_MINUTES)*TIMELINE_SNAP_MINUTES))
+}
 function mobileTimelinePosition(start,end,range){
   const left=mobileTimelinePercent(Math.max(start,range.first),range);
   const right=mobileTimelinePercent(Math.min(end,range.last),range);
@@ -2419,10 +2431,11 @@ function mobileTimelineRow(item,dateStr,range){
     const order=job.order;
     if(job.end<=range.first||job.start>=range.last)return"";
     const middle=(mobileTimelinePercent(job.start,range)+mobileTimelinePercent(job.end,range))/2,edge=middle<5?"edge-start":middle>95?"edge-end":"";
-    return`<span class="mobile-timeline-job ${edge} ${order.status==="completed"?"done":""}" data-timeline-order="${order.id}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span class="mobile-timeline-job-label">${esc(timelineRoomLabel(order))}</span><span class="mobile-timeline-job-range" aria-hidden="true"></span></span>`
+    const room=timelineRoomLabel(order);
+    return`<span class="mobile-timeline-job ${edge} ${order.status==="completed"?"done":""}" data-timeline-order="${order.id}" data-timeline-job-start="${job.start}" data-timeline-job-end="${job.end}" data-timeline-job-room="${esc(room)}" aria-label="${esc(room)}，${scheduleClock(job.start)}至${scheduleClock(job.end)}" style="--gc:${timelineTaskColor(order)};${mobileTimelinePosition(job.start,job.end,range)}"><span class="mobile-timeline-job-label">${esc(room)}</span><span class="mobile-timeline-job-range" aria-hidden="true"></span></span>`
   }).join("");
   const tag=canInteract?"button":"div",type=canInteract?' type="button"':"";
-  const data=canInteract?` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`:"";
+  const data=` data-timeline-track data-timeline-person="${esc(item.person.open_id)}" data-timeline-person-name="${esc(item.person.name)}" data-timeline-date="${dateStr}" data-timeline-first="${range.first}" data-timeline-last="${range.last}" data-timeline-start="${item.start==null?"":item.start}" data-timeline-end="${item.end==null?"":item.end}" data-timeline-jobs="${jobData}"`;
   const firstJob=jobs[0]?.order;
   const status=jobs.length?timelineRoomLabel(firstJob):item.kind==="free"?"可派":item.label;
   return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}</${tag}></div>`
@@ -2432,7 +2445,8 @@ function mobileDaySection(d,dateStr,index){
   const pending=roster.pending.length?`<div class="mobile-pending"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
   const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range)).join("")||empty("users","本组暂无可排班成员");
   const nowLeft=mobileTimelinePercent(referenceMinute,range).toFixed(3),nowLine=`<div class="mobile-timeline-now-layer" style="--left:${nowLeft}%" aria-hidden="true"><span class="mobile-timeline-now"></span><span class="mobile-timeline-now-label">当前 ${scheduleClock(referenceMinute)}</span></div>`;
-  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}${nowLine}</div></section>`
+  const hoverLine=`<div class="mobile-timeline-hover-layer" data-timeline-hover-layer hidden aria-hidden="true"><span class="mobile-timeline-hover-line"></span><span class="mobile-timeline-hover-label"></span></div>`;
+  return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}${nowLine}${hoverLine}</div></section>`
 }
 function mobileThreeDayAgenda(d,dateStr){
   const dates=[dateStr,dateAdd(dateStr,1),dateAdd(dateStr,2)];
@@ -2808,26 +2822,44 @@ document.querySelectorAll("[data-mobile-day]").forEach(button=>button.onclick=()
   const plan=document.querySelector("[data-plan-day]");
   if(plan){plan.dataset.planDay=date;plan.hidden=date<todayStr();plan.setAttribute("aria-label",`安排${fmtDateCn(date)}的任务`)}
 });
-document.querySelectorAll("[data-timeline-track]").forEach(track=>track.onclick=event=>{
+document.querySelectorAll("[data-timeline-track]").forEach(track=>{
+  const updatePointer=event=>{
+    if(event.pointerType==="touch")return;
+    const timeline=track.closest(".mobile-timeline"),layer=timeline?.querySelector("[data-timeline-hover-layer]");
+    if(!layer)return;
+    const first=Number(track.dataset.timelineFirst),last=Number(track.dataset.timelineLast),minute=timelinePointerMinute(track,event.clientX);
+    const left=mobileTimelinePercent(minute,{first,last}),job=event.target.closest("[data-timeline-order]");
+    const label=layer.querySelector(".mobile-timeline-hover-label");
+    label.textContent=job?`${job.dataset.timelineJobRoom} · ${scheduleClock(Number(job.dataset.timelineJobStart))}–${scheduleClock(Number(job.dataset.timelineJobEnd))}`:scheduleClock(minute);
+    layer.style.setProperty("--left",`${left.toFixed(3)}%`);
+    layer.classList.toggle("edge-start",left<12);
+    layer.classList.toggle("edge-end",left>88);
+    layer.hidden=false
+  };
+  const hidePointer=()=>{const layer=track.closest(".mobile-timeline")?.querySelector("[data-timeline-hover-layer]");if(layer)layer.hidden=true};
+  track.onpointerenter=updatePointer;
+  track.onpointermove=updatePointer;
+  track.onpointerleave=hidePointer;
+  track.onpointercancel=hidePointer;
+  track.onclick=event=>{
   const task=event.target.closest("[data-timeline-order]");
   if(task)return showDetail({dataset:{oid:task.dataset.timelineOrder}});
+  if(track.tagName!=="BUTTON")return;
   const first=Number(track.dataset.timelineFirst),last=Number(track.dataset.timelineLast);
   const shiftStart=Number(track.dataset.timelineStart),shiftEnd=Number(track.dataset.timelineEnd);
   const jobs=String(track.dataset.timelineJobs||"").split(",").filter(Boolean).map(value=>{const [id,start,end]=value.split(":").map(Number);return{id,start,end}});
   let minute;
   if(event.detail===0)minute=jobs[0]?.start||shiftStart;
-  else{
-    const rect=track.getBoundingClientRect();
-    minute=first+Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width))*(last-first)
-  }
+  else minute=timelinePointerMinute(track,event.clientX);
   const job=jobs.find(item=>item.start<=minute&&minute<item.end);
   if(job)return showDetail({dataset:{oid:String(job.id)}});
   if(!(me.role==="admin"||me.lead))return;
   if(!Number.isFinite(shiftStart)||!Number.isFinite(shiftEnd)||minute<shiftStart||minute>=shiftEnd){showToast("这个时间不在该人员班次内");return}
   if(track.dataset.timelineDate===todayStr())minute=Math.max(minute,scheduleMinute(scheduleClock(nowMinutes())));
-  minute=Math.ceil(minute/15)*15;
+  minute=Math.ceil(minute/TIMELINE_SNAP_MINUTES)*TIMELINE_SNAP_MINUTES;
   if(minute>=shiftEnd){showToast("该人员今天已经下班");return}
   openQuickOrder(track.dataset.timelinePerson,{date:track.dataset.timelineDate,at:scheduleClock(minute)})
+  }
 });
 document.querySelectorAll("[data-take]").forEach(button=>button.onclick=()=>runButtonAction(button,"接单中…",async()=>{await apiPost("assign",{order_id:Number(button.dataset.take)});showToast("接单成功");load()}));
 document.querySelectorAll("[data-start]").forEach(button=>button.onclick=()=>runButtonAction(button,"开始中…",async()=>{await apiPost("start",{order_id:Number(button.dataset.start)});showToast("已开始，正在计时");load()}));
