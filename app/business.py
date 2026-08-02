@@ -211,6 +211,9 @@ def migrate(conn):
             "abnormal_at": "TEXT DEFAULT ''",
             "abnormal_reason": "TEXT DEFAULT ''",
             "version": "INTEGER NOT NULL DEFAULT 1",
+            "feishu_calendar_id": "TEXT DEFAULT ''",
+            "feishu_event_id": "TEXT DEFAULT ''",
+            "calendar_synced_version": "INTEGER NOT NULL DEFAULT 0",
         },
     )
     ensure_columns(
@@ -252,9 +255,54 @@ def migrate(conn):
                 (format_dt(start), format_dt(end), order["id"]),
             )
 
+    # 日历同步由订单事实自动驱动，确保所有写入入口都走同一条可靠队列。
+    conn.executescript(
+        """
+        DROP TRIGGER IF EXISTS orders_calendar_insert;
+        DROP TRIGGER IF EXISTS orders_calendar_update;
+        CREATE TRIGGER orders_calendar_insert
+        AFTER INSERT ON orders
+        BEGIN
+          INSERT OR IGNORE INTO notification_outbox(
+            kind,recipient_id,payload,dedupe_key,status,attempts,available_at,created_at
+          ) VALUES(
+            'calendar_sync','',json_object('order_id',NEW.id),
+            'calendar:order:' || NEW.id || ':' || lower(hex(randomblob(12))),
+            'pending',0,strftime('%Y-%m-%d %H:%M:%S','now','localtime'),
+            strftime('%Y-%m-%d %H:%M:%S','now','localtime')
+          );
+        END;
+        CREATE TRIGGER orders_calendar_update
+        AFTER UPDATE OF date,team,room,task_type,minutes,arrive,assignee_id,assignee_name,
+          status,note,scheduled_start,scheduled_end,done_at,cancelled_at,cancel_reason,
+          abnormal_at,abnormal_reason,version ON orders
+        BEGIN
+          INSERT OR IGNORE INTO notification_outbox(
+            kind,recipient_id,payload,dedupe_key,status,attempts,available_at,created_at
+          ) VALUES(
+            'calendar_sync','',json_object('order_id',NEW.id),
+            'calendar:order:' || NEW.id || ':' || lower(hex(randomblob(12))),
+            'pending',0,strftime('%Y-%m-%d %H:%M:%S','now','localtime'),
+            strftime('%Y-%m-%d %H:%M:%S','now','localtime')
+          );
+        END;
+        """
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO notification_outbox(
+             kind,recipient_id,payload,dedupe_key,status,attempts,available_at,created_at
+           )
+           SELECT 'calendar_sync','',json_object('order_id',id),
+                  'calendar:order:' || id || ':backfill','pending',0,?,?
+           FROM orders
+           WHERE status NOT IN ('cancelled','abnormal')
+             AND COALESCE(feishu_event_id,'')=''""",
+        (now_iso(), now_iso()),
+    )
+
     stamp = now_iso()
     conn.execute(
-        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','6',?)",
+        "INSERT OR REPLACE INTO system_health(key,value,updated_at) VALUES('schema_version','7',?)",
         (stamp,),
     )
 

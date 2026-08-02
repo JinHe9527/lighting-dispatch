@@ -28,7 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -83,7 +83,7 @@ COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0802h"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0802i"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -264,6 +264,7 @@ def init_db():
     # 内部系统默认人工准入；旧的自动放行设置升级后立即收紧，既有已授权账号不受影响。
     conn.execute("INSERT OR IGNORE INTO settings(k,v) VALUES('gate_mode','manual')")
     conn.execute("UPDATE settings SET v='manual' WHERE k='gate_mode' AND v='open'")
+    conn.execute("INSERT OR IGNORE INTO settings(k,v) VALUES('feishu_calendar_name','团播派工排期')")
     ensure_columns(conn, "sla", {"grp": "TEXT DEFAULT ''"})
     ensure_columns(conn, "groups", {"auto": "INTEGER DEFAULT 0"})
     # 组:种子三个组 + 历史数据归入首个组 + 空组补默认任务分类
@@ -841,6 +842,153 @@ def _delete_task_now(row, payload):
         _persist_outbox_progress(row["id"], "task_deleted", guid)
 
 
+CHINA_TIMEZONE = timezone(timedelta(hours=8))
+CALENDAR_STATUS_LABEL = {
+    "pending": "待派",
+    "assigned": "已安排",
+    "in_progress": "进行中",
+    "completion_review": "结束核实",
+    "completed": "已完成",
+}
+
+
+def _calendar_bounds(order):
+    start = business.parse_dt(order["scheduled_start"])
+    end = business.parse_dt(order["scheduled_end"])
+    if not start or not end or end <= start:
+        start, end = business.schedule_bounds(order["date"], order["arrive"], order["minutes"] or 30)
+    if not start or not end:
+        raise RuntimeError("工单时间无效，无法同步飞书日历")
+    return start.replace(tzinfo=CHINA_TIMEZONE), end.replace(tzinfo=CHINA_TIMEZONE)
+
+
+def _calendar_room(order):
+    room = str(order["room"] or order["team"] or "未指定直播间").strip()
+    return room if room.endswith(("间", "房", "室")) else f"{room}间"
+
+
+def _calendar_event_body(order):
+    start, end = _calendar_bounds(order)
+    status = CALENDAR_STATUS_LABEL.get(order["status"], order["status"] or "待派")
+    room = _calendar_room(order)
+    assignee = order["assignee_name"] or "待派工"
+    description = "\n".join(
+        [
+            f"工单 #{order['id']}",
+            f"工作组：{order['grp']}",
+            f"直播团队：{order['team']} · {room}",
+            f"负责人：{assignee}",
+            f"任务：{order['task_type']}",
+            f"状态：{status}",
+            f"下单人：{order['creator_name'] or '未记录'}",
+            f"备注：{order['note'] or '无'}",
+            f"管理入口：{BASE_URL}/?page=dispatch",
+        ]
+    )
+    return {
+        "summary": f"【{order['grp']} · {status}】{room} · {order['task_type']}",
+        "description": description,
+        "start_time": {"timestamp": str(int(start.timestamp())), "timezone": "Asia/Shanghai"},
+        "end_time": {"timestamp": str(int(end.timestamp())), "timezone": "Asia/Shanghai"},
+        "visibility": "public",
+        "free_busy_status": "busy",
+        "need_notification": False,
+    }
+
+
+def _ensure_dispatch_calendar():
+    calendar_id = setting("feishu_calendar_id", "").strip()
+    if calendar_id:
+        return calendar_id
+    calendar_name = setting("feishu_calendar_name", "团播派工排期").strip() or "团播派工排期"
+    result = feishu_api(
+        "POST",
+        "/calendar/v4/calendars",
+        token=tenant_token(),
+        body={
+            "summary": calendar_name,
+            "description": "团播派工系统的统一任务日历。任务请在派工系统内修改。",
+            "permissions": "public",
+        },
+    )
+    if result.get("code") not in (0, None):
+        raise RuntimeError(result.get("msg") or "飞书共享日历创建失败")
+    calendar_id = ((result.get("data") or {}).get("calendar") or {}).get("calendar_id") or ""
+    if not calendar_id:
+        raise RuntimeError("飞书共享日历创建成功但未返回日历编号")
+    conn = db()
+    conn.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('feishu_calendar_id',?)", (calendar_id,))
+    conn.commit()
+    conn.close()
+    return calendar_id
+
+
+def _sync_calendar_now(row, payload):
+    order_id = record_id(payload.get("order_id"))
+    if not order_id:
+        return
+    conn = db()
+    order = conn.execute("SELECT * FROM orders WHERE id=?", (order_id,)).fetchone()
+    conn.close()
+    if not order:
+        return
+    calendar_id = order["feishu_calendar_id"] or setting("feishu_calendar_id", "").strip()
+    event_id = order["feishu_event_id"] or ""
+    if order["status"] in ("cancelled", "abnormal"):
+        if calendar_id and event_id:
+            result = feishu_api(
+                "DELETE",
+                f"/calendar/v4/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{urllib.parse.quote(event_id, safe='')}",
+                token=tenant_token(),
+                query={"need_notification": "false"},
+            )
+            if result.get("code") not in (0, None) and "not found" not in str(result.get("msg") or "").lower():
+                raise RuntimeError(result.get("msg") or "飞书日历事件删除失败")
+        conn = db()
+        conn.execute(
+            "UPDATE orders SET feishu_calendar_id='',feishu_event_id='',calendar_synced_version=? WHERE id=?",
+            (order["version"], order_id),
+        )
+        conn.commit()
+        conn.close()
+        return
+
+    calendar_id = calendar_id or _ensure_dispatch_calendar()
+    body = _calendar_event_body(order)
+    if event_id:
+        result = feishu_api(
+            "PATCH",
+            f"/calendar/v4/calendars/{urllib.parse.quote(calendar_id, safe='')}/events/{urllib.parse.quote(event_id, safe='')}",
+            token=tenant_token(),
+            query={"need_notification": "false"},
+            body=body,
+        )
+        if result.get("code") not in (0, None):
+            raise RuntimeError(result.get("msg") or "飞书日历事件更新失败")
+    else:
+        result = feishu_api(
+            "POST",
+            f"/calendar/v4/calendars/{urllib.parse.quote(calendar_id, safe='')}/events",
+            token=tenant_token(),
+            query={"idempotency_key": f"dispatch-calendar-order-{order_id:010d}-version-{order['version']:010d}"},
+            body=body,
+        )
+        if result.get("code") not in (0, None):
+            raise RuntimeError(result.get("msg") or "飞书日历事件创建失败")
+        event_id = ((result.get("data") or {}).get("event") or {}).get("event_id") or ""
+        if not event_id:
+            raise RuntimeError("飞书日历事件创建成功但未返回事件编号")
+    conn = db()
+    conn.execute(
+        """UPDATE orders
+           SET feishu_calendar_id=?,feishu_event_id=?,calendar_synced_version=?
+           WHERE id=?""",
+        (calendar_id, event_id, order["version"], order_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def process_outbox_once(limit=20):
     conn = db()
     conn.execute("BEGIN IMMEDIATE")
@@ -877,6 +1025,8 @@ def process_outbox_once(limit=20):
                         _create_task_now(row, payload)
                 elif row["kind"] == "task_delete":
                     _delete_task_now(row, payload)
+                elif row["kind"] == "calendar_sync":
+                    _sync_calendar_now(row, payload)
         except Exception as exc:
             error = str(exc)[:500]
         conn = db()
@@ -1353,6 +1503,18 @@ def api_state(user):
                  COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) notification_failed
                FROM notification_outbox"""
         ).fetchone())
+        calendar_queue = conn.execute(
+            """SELECT
+                 COALESCE(SUM(CASE WHEN status IN ('pending','retry','sending') THEN 1 ELSE 0 END),0) pending,
+                 COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END),0) failed
+               FROM notification_outbox WHERE kind='calendar_sync'"""
+        ).fetchone()
+        out["calendar"] = {
+            "name": settings.get("feishu_calendar_name", "团播派工排期"),
+            "connected": bool(settings.get("feishu_calendar_id", "")),
+            "pending": calendar_queue["pending"],
+            "failed": calendar_queue["failed"],
+        }
     conn.close()
     return out
 

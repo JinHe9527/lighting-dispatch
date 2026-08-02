@@ -1290,6 +1290,102 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertEqual(paths, ["/task/v2/tasks/task-1/add_members"])
         self.assertEqual(self.latest_order()["feishu_task_guid"], "task-1")
 
+    def test_order_changes_always_queue_calendar_sync(self):
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)
+        order = self.latest_order()
+        conn = server.db()
+        created = conn.execute(
+            "SELECT COUNT(*) count FROM notification_outbox WHERE kind='calendar_sync'"
+        ).fetchone()["count"]
+        conn.close()
+        self.assertGreaterEqual(created, 1)
+
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        conn = server.db()
+        queued = conn.execute(
+            "SELECT payload FROM notification_outbox WHERE kind='calendar_sync' ORDER BY id"
+        ).fetchall()
+        conn.close()
+        self.assertGreater(len(queued), created)
+        self.assertTrue(all(json.loads(row["payload"])["order_id"] == order["id"] for row in queued))
+
+    def test_calendar_sync_creates_updates_and_removes_event(self):
+        conn = server.db()
+        conn.execute("DELETE FROM settings WHERE k='feishu_calendar_id'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(server.SERVICE.order(self.admin, self.order_body(15, "admin"))[0], 200)
+        order = self.latest_order()
+        calls = []
+
+        def create_call(method, path, **kwargs):
+            calls.append((method, path, kwargs))
+            if path == "/calendar/v4/calendars":
+                return {"code": 0, "data": {"calendar": {"calendar_id": "calendar-1"}}}
+            return {"code": 0, "data": {"event": {"event_id": "event-1"}}}
+
+        with mock.patch.object(server, "feishu_api", side_effect=create_call), \
+                mock.patch.object(server, "tenant_token", return_value="token"):
+            server._sync_calendar_now({}, {"order_id": order["id"]})
+        self.assertEqual(calls[0][0:2], ("POST", "/calendar/v4/calendars"))
+        self.assertEqual(calls[1][0], "POST")
+        self.assertIn("/events", calls[1][1])
+        event_body = calls[1][2]["body"]
+        self.assertIn("待派", event_body["summary"])
+        self.assertEqual(event_body["visibility"], "public")
+        self.assertEqual(
+            int(event_body["end_time"]["timestamp"]) - int(event_body["start_time"]["timestamp"]),
+            order["minutes"] * 60,
+        )
+        synced = self.latest_order()
+        self.assertEqual(synced["feishu_calendar_id"], "calendar-1")
+        self.assertEqual(synced["feishu_event_id"], "event-1")
+
+        self.assertEqual(
+            server.SERVICE.assign(
+                self.lead, {"order_id": order["id"], "user_id": self.staff["open_id"]}
+            )[0],
+            200,
+        )
+        update_calls = []
+
+        def update_call(method, path, **kwargs):
+            update_calls.append((method, path, kwargs))
+            return {"code": 0}
+
+        with mock.patch.object(server, "feishu_api", side_effect=update_call), \
+                mock.patch.object(server, "tenant_token", return_value="token"):
+            server._sync_calendar_now({}, {"order_id": order["id"]})
+        self.assertEqual(update_calls[0][0], "PATCH")
+        self.assertIn("已安排", update_calls[0][2]["body"]["summary"])
+        self.assertIn(self.staff["name"], update_calls[0][2]["body"]["description"])
+
+        self.assertEqual(
+            server.SERVICE.cancel(
+                self.admin, {"order_id": order["id"], "reason": "日历删除测试"}
+            )[0],
+            200,
+        )
+        delete_calls = []
+
+        def delete_call(method, path, **kwargs):
+            delete_calls.append((method, path, kwargs))
+            return {"code": 0}
+
+        with mock.patch.object(server, "feishu_api", side_effect=delete_call), \
+                mock.patch.object(server, "tenant_token", return_value="token"):
+            server._sync_calendar_now({}, {"order_id": order["id"]})
+        self.assertEqual(delete_calls[0][0], "DELETE")
+        self.assertIn("event-1", delete_calls[0][1])
+        removed = self.latest_order()
+        self.assertEqual(removed["feishu_event_id"], "")
+        self.assertEqual(removed["feishu_calendar_id"], "")
+
     def test_upload_reservation_enforces_pending_file_limit(self):
         conn = server.db()
         for index in range(server.MEDIA_PENDING_FILE_LIMIT):

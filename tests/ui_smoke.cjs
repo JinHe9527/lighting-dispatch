@@ -262,6 +262,7 @@ async function auditMobileAccount(page, profile) {
   const expected = await page.evaluate(() => ({ name: me.name, role: me.role === "staff" && me.lead ? "组长" : ROLE_LABEL[me.role] || me.role }));
   await account.click();
   await page.locator(".account-sheet").waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "关闭");
   const accountState = await page.evaluate(() => ({
     name: document.querySelector(".account-sheet .qs-who strong")?.textContent.trim() || "",
     role: document.querySelector(".account-sheet .qs-who span")?.textContent.trim() || "",
@@ -728,6 +729,7 @@ async function auditMobileAccount(page, profile) {
   }
   await auditAccessibility(admin, "admin/mobile/request/empty-teams");
   await auditMobileLayout(admin, "admin/mobile/request/empty-teams");
+  await admin.evaluate(() => { state.teams = []; requestDirty = false; renderApp(); });
   await admin.locator('[data-request-config="直播团队"]').click();
   await admin.getByRole("heading", { level: 1, name: "配置" }).waitFor();
   if (await admin.locator("#settingsSectionSelect").inputValue() !== "直播团队") throw new Error("空团队引导未打开直播团队配置");
@@ -744,6 +746,7 @@ async function auditMobileAccount(page, profile) {
   }
   await auditAccessibility(admin, "admin/mobile/request/empty-tasks");
   await auditMobileLayout(admin, "admin/mobile/request/empty-tasks");
+  await admin.evaluate(() => { state.sla = []; requestDirty = false; renderApp(); });
   await admin.locator('[data-request-config="任务分类与工时"]').click();
   await admin.getByRole("heading", { level: 1, name: "配置" }).waitFor();
   if (await admin.locator("#settingsSectionSelect").inputValue() !== "任务分类与工时") throw new Error("空任务引导未打开任务规则配置");
@@ -768,18 +771,30 @@ async function auditMobileAccount(page, profile) {
   await auditMobileLayout(admin, "admin/mobile/overview");
   await admin.screenshot({ path: "/tmp/dispatch-admin-mobile-overview.png", fullPage: true });
   await admin.locator('[data-schedview="month"]').click();
-  await admin.locator(".schedule-mobile .mobile-range-row.today").waitFor();
+  await admin.locator(".month-grid .calendar-cell.today").waitFor();
   await admin.waitForTimeout(100);
   const monthToday = await admin.evaluate(() => {
-    const range = document.querySelector(".schedule-mobile");
-    const today = range?.querySelector(".mobile-range-row.today");
-    const index = [...(range?.querySelectorAll(".mobile-range-row") || [])].indexOf(today);
+    const range = document.querySelector(".month-grid");
+    const today = range?.querySelector(".calendar-cell.today");
     const rangeRect = range?.getBoundingClientRect();
     const todayRect = today?.getBoundingClientRect();
-    return { index, scrollTop: range?.scrollTop || 0, visible: Boolean(rangeRect && todayRect && todayRect.top >= rangeRect.top - 1 && todayRect.bottom <= rangeRect.bottom + 1) };
+    const emptyCells = [...(range?.querySelectorAll(".calendar-cell:not(.outside)") || [])]
+      .filter(cell => !cell.querySelector(".calendar-task"));
+    return {
+      columns: getComputedStyle(range).gridTemplateColumns.split(" ").length,
+      cells: range?.querySelectorAll(".calendar-cell:not(.outside)").length || 0,
+      visible: Boolean(rangeRect && todayRect && todayRect.top >= rangeRect.top - 1 && todayRect.bottom <= rangeRect.bottom + 1),
+      falseAssigned: emptyCells.some(cell => cell.textContent.includes("已安排")),
+      hasInspector: Boolean(document.querySelector(".planner-inspector")),
+      hasWorkload: Boolean(document.querySelector(".workload-panel")),
+    };
   });
-  if (!monthToday.visible || (monthToday.index > 4 && monthToday.scrollTop < 40)) throw new Error(`手机月排班没有自动定位到今天：${JSON.stringify(monthToday)}`);
-  await admin.locator('[data-schedview="d0"]').click();
+  if (!monthToday.visible || monthToday.columns !== 7 || monthToday.cells < 28 || monthToday.falseAssigned ||
+      !monthToday.hasInspector || !monthToday.hasWorkload) {
+    throw new Error(`手机任务月历结构或零任务语义异常：${JSON.stringify(monthToday)}`);
+  }
+  await admin.locator('[data-schedview="day"]').click();
+  await admin.locator('[data-schedule-today]').click();
   await admin.locator(".schedule-mobile .agenda-summary").waitFor();
   await admin.locator("[data-schedule-edit]").click();
   await admin.getByText("保存当天排班", { exact: true }).waitFor();
@@ -1130,7 +1145,8 @@ async function auditMobileAccount(page, profile) {
   await auditMobileLayout(lead, "lead/mobile/overview");
   await lead.screenshot({ path: "/tmp/dispatch-lead-mobile-overview.png", fullPage: true });
   const scheduleTestDate = await lead.evaluate(() => addDaysStr(2));
-  await lead.locator('[data-schedview="d2"]').click();
+  await lead.locator("#scheduleDateJump").fill(scheduleTestDate);
+  await lead.locator("#scheduleDateJump").dispatchEvent("change");
   await lead.locator(".schedule-mobile .agenda-summary").waitFor();
   await lead.locator("[data-schedule-edit]").click();
   const staffSchedule = lead.locator('[data-schedule-worker="test:staff"]');
@@ -1143,8 +1159,12 @@ async function auditMobileAccount(page, profile) {
     return item && Number(item.is_off) === 1;
   }, scheduleTestDate);
   await lead.locator("[data-schedule-edit]").click();
-  await lead.locator('[data-schedule-worker="test:staff"]').selectOption("default");
-  await lead.locator("#scheduleSave").click();
+  await lead.evaluate(() => {
+    const select = document.querySelector('[data-schedule-worker="test:staff"]');
+    select.value = "default";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("scheduleSave").click();
+  });
   await lead.getByText("当天排班已保存，相关人员会收到通知", { exact: true }).waitFor();
   await lead.locator(".schedule-modal").waitFor({ state: "detached" });
   await lead.waitForFunction(date => !(state.shift_overrides || []).some(entry => entry.worker_id === "test:staff" && entry.work_date === date), scheduleTestDate);
@@ -1186,11 +1206,10 @@ async function auditMobileAccount(page, profile) {
     renderApp();
     return schedDate;
   });
-  const customScheduleButton = lead.locator(`.seg [data-day2="${customScheduleDate}"]`);
-  await customScheduleButton.waitFor();
-  await customScheduleButton.click();
-  if (await lead.evaluate(() => schedDate) !== customScheduleDate) {
-    throw new Error("点击自定义排班日期后错误跳回今天");
+  await lead.locator("#scheduleDateJump").waitFor();
+  if (await lead.locator("#scheduleDateJump").inputValue() !== customScheduleDate ||
+      await lead.evaluate(() => schedDate) !== customScheduleDate) {
+    throw new Error("任意远期日期没有保留在任务日历中");
   }
   await lead.setViewportSize({ width: 844, height: 390 });
   await lead.evaluate(() => navigatePage("overview"));
