@@ -818,8 +818,9 @@ button.mobile-timeline-track:hover{background-color:var(--fill-2)}
 .mobile-timeline-job span{display:block;padding:5px 4px 0;color:#fff;font-size:9px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mobile-timeline-job small{display:block;padding:2px 4px;color:rgba(255,255,255,.82);font:8px var(--mono);white-space:nowrap}
 .mobile-timeline-job.done{opacity:.48;filter:saturate(.45)}
-.mobile-timeline-now-layer{position:absolute;z-index:4;top:var(--axis-height);right:8px;bottom:0;left:var(--name-col);pointer-events:none}
-.mobile-timeline-now{position:absolute;top:0;bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
+.mobile-timeline-now-layer{position:absolute;z-index:4;top:0;right:8px;bottom:0;left:var(--name-col);pointer-events:none}
+.mobile-timeline-now{position:absolute;top:var(--axis-height);bottom:0;left:var(--left);width:2px;background:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
+.mobile-timeline-now-label{position:absolute;top:4px;left:var(--left);padding:1px 4px;border-radius:4px;background:var(--surface);color:var(--accent);font:700 9px/15px var(--mono);white-space:nowrap;transform:translateX(-50%);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 24%,transparent)}
 .schedule-desktop .day-status-board{margin-bottom:10px}
 .schedule-modal{max-width:620px}
 .schedule-form{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--line-soft);border-radius:10px}
@@ -1237,7 +1238,7 @@ function mobileNavFor(items,key){
   const secondary=items.filter(item=>!primaryIds.includes(item.id));
   return secondary.length?[...primary,{id:"more",label:"更多",icon:"menu",secondary}]:primary;
 }
-const APP_VERSION="v0802n";
+const APP_VERSION="v0802o";
 const ruleV=(k,d)=>{const r=(typeof state!=="undefined"&&state&&state.rules)||{};return r[k]==null?d:r[k]};
 let state=null,me=null,page="",testMode=false,configured=true,srvVer="",auditCat="all",auditRows=null,auditError="",auditLoading=false,timer=null,lastOrders=null,reqWhen="now",reqDate=null,reqAt=null,reqEnd=null,reqGroup=null,reqTeam=null,reqTask=null,requestDirty=false,boardGrp="",cfgGrp=null,cfgSec="直播团队",crewSection="roster",crewQuery="",dispatchQuery="";
 let statsData=null,statsRange="30d",statsPerson=null,statsPersonData=null,statsLoading=false,statsPersonLoading=false,statsError="",statsPersonError="",statsGroup="";
@@ -2277,13 +2278,14 @@ function timelineRoomLabel(order){
   if(number)return`${number[0]}号`;
   return room.replace(/直播间/g,"").trim()||String(order.team||"任务")
 }
-function mobileTimelineRange(roster){
+function mobileTimelineRange(roster,referenceMinute){
   let first=480,last=1440;
   roster.people.forEach(item=>{
     if(item.start!=null)first=Math.min(first,item.start);
     if(item.end!=null)last=Math.max(last,item.end);
     item.jobs.forEach(job=>{first=Math.min(first,job.start);last=Math.max(last,job.end)})
   });
+  if(referenceMinute!=null){first=Math.min(first,referenceMinute);last=Math.max(last,referenceMinute)}
   first=Math.max(300,Math.floor(first/60)*60);
   last=Math.min(1740,Math.ceil(last/60)*60);
   return{first,last:Math.max(last,first+720)}
@@ -2334,10 +2336,10 @@ function mobileTimelineRow(item,dateStr,range){
   return`<div class="mobile-timeline-row ${item.kind}" data-mobile-person="${esc(item.person.open_id)}"><div class="mobile-timeline-who"><strong>${esc(item.person.name)}</strong><span><i class="status-dot"></i>${esc(status)}</span></div><${tag}${type} class="mobile-timeline-track"${data} aria-label="${canInteract?`查看或安排${esc(item.person.name)}在${esc(fmtDateCn(dateStr))}的时间轴`:""}">${shift}${blocks}</${tag}></div>`
 }
 function mobileDaySection(d,dateStr,index){
-  const roster=dayRoster(d,dateStr),range=mobileTimelineRange(roster);
+  const roster=dayRoster(d,dateStr),referenceMinute=scheduleMinute(scheduleClock(nowMinutes())),range=mobileTimelineRange(roster,referenceMinute);
   const pending=roster.pending.length?`<div class="mobile-pending"><strong>${icon("circle-alert",true)}待派 ${roster.pending.length}</strong>${roster.pending.map(order=>`<button ${scheduleDetailAttrs(order)}><b>${esc(order.arrive||"--:--")}</b> ${esc(order.room||order.team)} · ${esc(order.task_type)}</button>`).join("")}</div>`:"";
   const rows=roster.people.map(item=>mobileTimelineRow(item,dateStr,range)).join("")||empty("users","本组暂无可排班成员");
-  const nowLine=dateStr===todayStr()&&roster.now!=null&&range.first<=roster.now&&roster.now<=range.last?`<div class="mobile-timeline-now-layer" aria-hidden="true"><span class="mobile-timeline-now" style="--left:${mobileTimelinePercent(roster.now,range).toFixed(3)}%"></span></div>`:"";
+  const nowLeft=mobileTimelinePercent(referenceMinute,range).toFixed(3),nowLine=`<div class="mobile-timeline-now-layer" style="--left:${nowLeft}%" aria-hidden="true"><span class="mobile-timeline-now"></span><span class="mobile-timeline-now-label">当前 ${scheduleClock(referenceMinute)}</span></div>`;
   return`<section class="mobile-day-section" data-mobile-day-section="${dateStr}"${index?" hidden":""}>${pending}<div class="mobile-timeline">${mobileTimelineAxis(range)}${rows}${nowLine}</div></section>`
 }
 function mobileThreeDayAgenda(d,dateStr){
