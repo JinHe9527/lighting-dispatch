@@ -710,6 +710,27 @@ async function auditMobileAccount(page, profile) {
   if (lightingPriority.owner !== "test:staff" || lightingPriority.first !== "test:staff" || lightingPriority.selected !== "test:staff" || !lightingPriority.firstLabel.includes("本职负责")) {
     throw new Error(`下单选人没有优先显示本职灯光师：${JSON.stringify(lightingPriority)}`);
   }
+  const quickOrderRoomPriority = await admin.evaluate(() => {
+    const person = state.staff.find(item => item.open_id === "test:staff");
+    const owned = state.teams.slice(0, 2);
+    owned.forEach(team => { team.lighting_owner_id = person.open_id; });
+    reqTeam = state.teams[2].name;
+    openQuickOrder(person.open_id, { date: addDaysStr(5), at: "15:00" });
+    const select = document.getElementById("qsTeam");
+    const result = {
+      selected: select.value,
+      firstTwo: [...select.options].slice(0, 2).map(option => option.value),
+      expected: owned.map(team => team.name),
+      ownerNote: document.getElementById("qsOwnerNote")?.textContent || "",
+    };
+    closeQuick();
+    return result;
+  });
+  if (quickOrderRoomPriority.selected !== quickOrderRoomPriority.expected[0] ||
+      JSON.stringify(quickOrderRoomPriority.firstTwo) !== JSON.stringify(quickOrderRoomPriority.expected) ||
+      !quickOrderRoomPriority.ownerNote.includes("当前直派对象一致")) {
+    throw new Error(`点人员派单没有优先显示其本职直播间：${JSON.stringify(quickOrderRoomPriority)}`);
+  }
   const desktopLayout = await admin.evaluate(() => {
     const workspace = document.querySelector(".workspace").getBoundingClientRect();
     const settings = document.querySelector(".settings-wrap").getBoundingClientRect();
