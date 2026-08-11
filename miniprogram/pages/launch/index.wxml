@@ -1,0 +1,47 @@
+<view class="launch-page">
+  <view class="brand">
+    <view class="brand-mark" aria-hidden="true">
+      <view class="lamp-cap"></view>
+      <view class="lamp-light"></view>
+    </view>
+    <view class="brand-kicker">WUY◦DISPATCH</view>
+    <view class="brand-name">团播派工</view>
+    <view class="brand-copy">网站与小程序，共用同一份排期数据</view>
+  </view>
+
+  <view wx:if="{{phase === 'loading'}}" class="card status-card">
+    <view class="spinner"></view>
+    <view class="status-title">正在连接派工系统</view>
+    <view class="status-copy">验证微信身份并同步现有账号权限</view>
+  </view>
+
+  <view wx:elif="{{phase === 'unbound'}}" class="card bind-card">
+    <view class="step-number">01</view>
+    <view class="card-kicker">首次使用</view>
+    <view class="card-title">绑定现有系统账号</view>
+    <view class="card-copy">在网站右下角账户菜单进入「微信小程序」，生成 8 位绑定码后填入这里。</view>
+    <input
+      class="bind-input"
+      type="number"
+      maxlength="8"
+      value="{{bindCode}}"
+      placeholder="输入 8 位绑定码"
+      placeholder-class="bind-placeholder"
+      bindinput="handleBindCode"
+      confirm-type="done"
+      bindconfirm="bindAccount"
+    />
+    <button class="primary-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="bindAccount">
+      {{submitting ? '正在绑定' : '绑定并同步数据'}}
+    </button>
+    <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+    <view class="privacy-note">绑定后沿用网站账号的角色与权限，不会复制或拆分数据。</view>
+  </view>
+
+  <view wx:else class="card status-card">
+    <view class="error-mark"><view class="error-line"></view></view>
+    <view class="status-title">暂时无法连接</view>
+    <view class="status-copy">{{errorMessage}}</view>
+    <button class="secondary-button" bindtap="authenticate">重新验证</button>
+  </view>
+</view>

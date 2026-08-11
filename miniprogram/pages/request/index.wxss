@@ -1,0 +1,20 @@
+.request-card { padding: 0 28rpx 30rpx; }
+.form-section { position: relative; padding: 34rpx 0; border-bottom: 1rpx solid #e8e3d9; }
+.first-section { padding-top: 32rpx; }
+.form-index { position: absolute; top: 28rpx; right: 2rpx; color: #e1ddd4; font-family: Georgia, serif; font-size: 58rpx; font-weight: 700; line-height: 1; }
+.form-heading { font-family: "Songti SC", serif; font-size: 32rpx; font-weight: 700; }
+.field-row { display: flex; gap: 14rpx; }
+.grow { flex: 1; min-width: 0; }
+.when-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10rpx; margin-top: 24rpx; }
+.when-button { min-height: 70rpx; margin: 0; padding: 0 8rpx; border: 1rpx solid #d8d3c8; border-radius: 15rpx; background: #f8f6f1; color: #74726b; font-size: 21rpx; line-height: 1; }
+.when-button.active { border-color: #252720; background: #252720; color: #fffdfa; font-weight: 700; }
+.custom-task-toggle { width: auto; margin: 16rpx 0 0; padding: 8rpx 0; background: transparent; color: #9a681b; font-size: 21rpx; line-height: 1.4; text-align: left; }
+.attachment-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 18rpx; }
+.attachment-button { min-height: 76rpx; margin: 0; border: 1rpx dashed #c9c1b3; border-radius: 16rpx; background: #f8f6f1; color: #5f6059; font-size: 23rpx; line-height: 1; }
+.file-chip { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin-top: 12rpx; padding: 15rpx 18rpx; border-radius: 14rpx; background: #f0ede6; color: #64655e; font-size: 21rpx; }
+.file-chip text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-chip button { flex: none; width: auto; margin: 0; padding: 8rpx; background: transparent; color: #a63d31; font-size: 20rpx; line-height: 1; }
+.urgent-row { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-top: 22rpx; padding: 20rpx; border-radius: 16rpx; background: #fff4da; }
+.urgent-title { font-size: 24rpx; font-weight: 700; }
+.urgent-note { margin-top: 5rpx; color: #8d744c; font-size: 19rpx; }
+.submit-button { margin-top: 30rpx; }

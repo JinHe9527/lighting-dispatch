@@ -1,0 +1,22 @@
+{
+  "pages": [
+    "pages/launch/index",
+    "pages/home/index",
+    "pages/request/index",
+    "pages/orders/index",
+    "pages/schedule/index",
+    "pages/people/index",
+    "pages/stats/index",
+    "pages/settings/index",
+    "pages/audit/index",
+    "pages/account/index"
+  ],
+  "window": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#F3F1EC",
+    "backgroundTextStyle": "dark",
+    "enablePullDownRefresh": false
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

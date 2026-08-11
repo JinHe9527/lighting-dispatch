@@ -1,0 +1,43 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">MY ACCOUNT</view>
+      <view class="page-title">账号与同步</view>
+      <view class="page-subtitle">微信身份关联现有系统账号</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在读取账号</view></view>
+
+  <block wx:else>
+    <view class="card profile-card">
+      <view class="profile-avatar">{{me.initial}}</view>
+      <view class="profile-main"><view class="profile-name">{{me.name}}</view><view class="profile-meta">{{roleText}}{{me.grp ? ' · ' + me.grp : ''}}</view></view>
+      <view class="bound-pill">已绑定</view>
+    </view>
+
+    <view class="sync-map">
+      <view class="sync-entry"><strong>微信小程序</strong><text>当前入口</text></view>
+      <view class="sync-line"><view></view><text>同一服务器 · 同一数据库</text><view></view></view>
+      <view class="sync-entry website"><strong>网站</strong><text>wuyoupaiban.cn</text></view>
+    </view>
+
+    <view class="section">
+      <view class="section-head"><view class="section-title">系统信息</view></view>
+      <view class="card info-list">
+        <view class="info-row"><text>账号角色</text><strong>{{roleText}}</strong></view>
+        <view class="info-row"><text>所属分组</text><strong>{{me.grp || '不限制'}}</strong></view>
+        <view class="info-row"><text>服务版本</text><strong>{{state.server_version}}</strong></view>
+        <view class="info-row"><text>微信绑定</text><strong>{{state.wechat.bound ? '正常' : '异常'}}</strong></view>
+      </view>
+    </view>
+
+    <view class="account-actions">
+      <button class="secondary-button" bindtap="copyWebsite">复制网站地址</button>
+      <button class="secondary-button" bindtap="logout">退出当前小程序</button>
+      <button class="danger-button" bindtap="unbind">解除微信绑定</button>
+    </view>
+  </block>
+</view>
+
+<app-nav wx:if="{{me}}" active="account" user="{{me}}"></app-nav>

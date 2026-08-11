@@ -30,6 +30,8 @@ class DispatchFlowTests(unittest.TestCase):
 
     def setUp(self):
         conn = server.db()
+        conn.execute("DELETE FROM wechat_bind_codes")
+        conn.execute("DELETE FROM wechat_accounts")
         conn.execute("DELETE FROM time_reviews")
         conn.execute("DELETE FROM work_sessions")
         conn.execute("DELETE FROM transfers")
@@ -96,6 +98,124 @@ class DispatchFlowTests(unittest.TestCase):
         if creator == "admin":
             body["team_id"] = self.team_row["id"]
         return body
+
+    def test_wechat_binding_and_login_issue_native_sessions(self):
+        code, binding = server.create_wechat_bind_code(self.staff)
+        self.assertEqual(code, 200)
+        self.assertRegex(binding["code"], r"^\d{8}$")
+
+        conn = server.db()
+        stored = dict(conn.execute("SELECT * FROM wechat_bind_codes").fetchone())
+        conn.close()
+        self.assertNotEqual(stored["code_hash"], binding["code"])
+        self.assertEqual(stored["code_hash"], server._wechat_digest(binding["code"]))
+
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            status, result = server.bind_wechat_account("login-code", binding["code"])
+        self.assertEqual(status, 200)
+        self.assertTrue(result["bound"])
+        self.assertEqual(result["user"]["open_id"], self.staff["open_id"])
+        self.assertEqual(
+            server.session_user(result["session_token"])["open_id"],
+            self.staff["open_id"],
+        )
+
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            status, login = server.wechat_login("next-code")
+        self.assertEqual(status, 200)
+        self.assertTrue(login["bound"])
+        self.assertNotEqual(login["session_token"], result["session_token"])
+        self.assertEqual(
+            server.session_user(login["session_token"])["open_id"],
+            self.staff["open_id"],
+        )
+        self.assertTrue(server.api_state(self.staff)["wechat"]["bound"])
+
+    def test_wechat_binding_rejects_invalid_expired_and_reused_codes(self):
+        code, binding = server.create_wechat_bind_code(self.staff)
+        self.assertEqual(code, 200)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            self.assertEqual(server.bind_wechat_account("login-code", "0000000")[0], 400)
+            self.assertEqual(server.bind_wechat_account("login-code", "99999999")[0], 403)
+
+        conn = server.db()
+        conn.execute(
+            "UPDATE wechat_bind_codes SET expires_at=? WHERE code_hash=?",
+            (
+                (datetime.now() - timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S"),
+                server._wechat_digest(binding["code"]),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            status, message = server.bind_wechat_account("login-code", binding["code"])
+        self.assertEqual(status, 410)
+        self.assertIn("失效", message)
+
+        _, current = server.create_wechat_bind_code(self.staff)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            self.assertEqual(server.bind_wechat_account("login-code", current["code"])[0], 200)
+            self.assertEqual(server.bind_wechat_account("login-code", current["code"])[0], 410)
+
+    def test_wechat_binding_is_one_to_one(self):
+        _, staff_code = server.create_wechat_bind_code(self.staff)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-shared"):
+            self.assertEqual(server.bind_wechat_account("staff-code", staff_code["code"])[0], 200)
+        self.assertEqual(server.create_wechat_bind_code(self.staff)[0], 409)
+
+        _, lead_code = server.create_wechat_bind_code(self.lead)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-shared"):
+            status, message = server.bind_wechat_account("lead-code", lead_code["code"])
+        self.assertEqual(status, 409)
+        self.assertIn("其他系统账号", message)
+
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-lead"):
+            self.assertEqual(server.bind_wechat_account("lead-code", lead_code["code"])[0], 200)
+
+    def test_wechat_unbind_and_account_block_revoke_sessions(self):
+        _, binding = server.create_wechat_bind_code(self.staff)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            _, result = server.bind_wechat_account("login-code", binding["code"])
+        sid = result["session_token"]
+        self.assertIsNotNone(server.session_user(sid))
+        self.assertEqual(server.unbind_wechat_account(self.lead, self.staff["open_id"])[0], 403)
+        read_only_admin = dict(self.admin, read_only=1)
+        self.assertEqual(server.unbind_wechat_account(read_only_admin, self.staff["open_id"])[0], 403)
+        self.assertEqual(server.unbind_wechat_account(self.admin, self.staff["open_id"]), (200, None))
+        self.assertIsNone(server.session_user(sid))
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            self.assertEqual(server.wechat_login("login-code"), (200, {"bound": False}))
+
+        _, binding = server.create_wechat_bind_code(self.staff)
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            _, result = server.bind_wechat_account("login-code", binding["code"])
+        self.assertEqual(
+            server.do_save(
+                self.admin,
+                {"entity": "users", "record": {"open_id": self.staff["open_id"], "blocked": "1"}},
+            ),
+            (200, None),
+        )
+        self.assertIsNone(server.session_user(result["session_token"]))
+        with mock.patch.object(server, "wechat_code_exchange", return_value="wx-staff"):
+            status, message = server.wechat_login("blocked-code")
+        self.assertEqual(status, 403)
+        self.assertIn("停用", message)
+
+    def test_wechat_code_exchange_uses_server_credentials(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"openid":"wx-open-id"}'
+        with mock.patch.object(server, "WECHAT_CONFIGURED", True), \
+                mock.patch.object(server, "WECHAT_APP_ID", "wx-app-id"), \
+                mock.patch.object(server, "WECHAT_APP_SECRET", "server-secret"), \
+                mock.patch.object(server.urllib.request, "urlopen", return_value=response) as opener:
+            self.assertEqual(server.wechat_code_exchange("one-time-code"), "wx-open-id")
+        request = opener.call_args.args[0]
+        query = dict(server.urllib.parse.parse_qsl(server.urllib.parse.urlparse(request.full_url).query))
+        self.assertEqual(query["appid"], "wx-app-id")
+        self.assertEqual(query["secret"], "server-secret")
+        self.assertEqual(query["js_code"], "one-time-code")
 
     def test_account_admission_blocking_and_session_revocation(self):
         conn = server.db()
@@ -1859,6 +1979,53 @@ class DispatchFlowTests(unittest.TestCase):
         self.assertIn('<link rel="apple-touch-icon" href="/app-icon-180.png">', page_source)
         self.assertIn('<meta name="apple-mobile-web-app-capable" content="yes">', page_source)
         self.assertIn("-webkit-text-size-adjust:100%", page_source)
+
+    def test_wechat_miniprogram_assets_are_complete(self):
+        project_root = Path(server.PROJECT)
+        mini_root = project_root / "miniprogram"
+        app_config = json.loads((mini_root / "app.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            app_config["pages"],
+            [
+                "pages/launch/index",
+                "pages/home/index",
+                "pages/request/index",
+                "pages/orders/index",
+                "pages/schedule/index",
+                "pages/people/index",
+                "pages/stats/index",
+                "pages/settings/index",
+                "pages/audit/index",
+                "pages/account/index",
+            ],
+        )
+        self.assertEqual(app_config["sitemapLocation"], "sitemap.json")
+        for page in app_config["pages"]:
+            for suffix in (".js", ".json", ".wxml", ".wxss"):
+                self.assertTrue((mini_root / f"{page}{suffix}").is_file())
+        for suffix in (".js", ".json", ".wxml", ".wxss"):
+            self.assertTrue((mini_root / f"components/app-nav/index{suffix}").is_file())
+
+        app_source = (mini_root / "app.js").read_text(encoding="utf-8")
+        launch_source = (mini_root / "pages" / "launch" / "index.js").read_text(encoding="utf-8")
+        page_sources = "\n".join(
+            (mini_root / f"{page}.wxml").read_text(encoding="utf-8")
+            for page in app_config["pages"]
+        )
+        self.assertIn('apiBase: "https://wuyoupaiban.cn"', app_source)
+        self.assertIn("header.Authorization = `Bearer ${token}`", app_source)
+        self.assertIn('get("/api/state")', app_source)
+        self.assertIn('/auth/wechat/session', launch_source)
+        self.assertIn('/auth/wechat/bind', launch_source)
+        self.assertIn("result.session_token", launch_source)
+        self.assertNotIn("<web-view", page_sources)
+        self.assertIn("/api/order", (mini_root / "pages/request/index.js").read_text(encoding="utf-8"))
+        self.assertIn("/api/assign", (mini_root / "pages/orders/index.js").read_text(encoding="utf-8"))
+        self.assertIn("/api/schedule", (mini_root / "pages/schedule/index.js").read_text(encoding="utf-8"))
+        self.assertIn("/api/stats", (mini_root / "pages/stats/index.js").read_text(encoding="utf-8"))
+        self.assertFalse((Path(server.ROOT) / "vendor" / "jweixin.min.js").exists())
+        page_source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("jweixin.min.js", page_source)
 
 
 if __name__ == "__main__":

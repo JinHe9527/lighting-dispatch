@@ -1,0 +1,169 @@
+.launch-page {
+  min-height: 100vh;
+  padding: calc(env(safe-area-inset-top) + 92rpx) 38rpx calc(env(safe-area-inset-bottom) + 48rpx);
+  background:
+    linear-gradient(115deg, transparent 0 64%, rgba(181, 126, 39, 0.08) 64% 65%, transparent 65%),
+    #f3f1ec;
+}
+
+.brand {
+  margin-bottom: 54rpx;
+  text-align: center;
+}
+
+.brand-mark {
+  position: relative;
+  width: 104rpx;
+  height: 104rpx;
+  margin: 0 auto 24rpx;
+  border-radius: 24rpx 24rpx 34rpx 34rpx;
+  background: #22241f;
+  box-shadow: 0 18rpx 42rpx rgba(30, 32, 28, 0.2);
+}
+
+.lamp-cap {
+  position: absolute;
+  left: 26rpx;
+  top: 25rpx;
+  width: 52rpx;
+  height: 23rpx;
+  border-radius: 24rpx 24rpx 7rpx 7rpx;
+  background: #fffdfa;
+}
+
+.lamp-light {
+  position: absolute;
+  left: 34rpx;
+  top: 55rpx;
+  width: 36rpx;
+  height: 25rpx;
+  border-radius: 4rpx 4rpx 20rpx 20rpx;
+  background: #e7a63c;
+  box-shadow: 0 6rpx 20rpx rgba(231, 166, 60, 0.5);
+}
+
+.brand-kicker {
+  color: #9a681b;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.brand-name {
+  margin-top: 10rpx;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 54rpx;
+  font-weight: 700;
+  letter-spacing: 2rpx;
+}
+
+.brand-copy {
+  margin-top: 12rpx;
+  color: #77766f;
+  font-size: 24rpx;
+}
+
+.bind-card,
+.status-card {
+  position: relative;
+  padding: 44rpx 36rpx 38rpx;
+}
+
+.step-number {
+  position: absolute;
+  top: 24rpx;
+  right: 30rpx;
+  color: #e2ded5;
+  font-family: Georgia, serif;
+  font-size: 72rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.card-kicker {
+  color: #9a681b;
+  font-size: 21rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+}
+
+.card-title,
+.status-title {
+  margin-top: 12rpx;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 38rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.card-copy,
+.status-copy {
+  margin-top: 15rpx;
+  color: #77766f;
+  font-size: 25rpx;
+  line-height: 1.7;
+}
+
+.bind-input {
+  height: 106rpx;
+  margin-top: 34rpx;
+  padding: 0 24rpx;
+  border: 2rpx solid #d8d3c8;
+  border-radius: 18rpx;
+  background: #f8f6f1;
+  color: #1f211f;
+  font-family: Menlo, monospace;
+  font-size: 38rpx;
+  font-weight: 700;
+  letter-spacing: 9rpx;
+  text-align: center;
+}
+
+.bind-placeholder {
+  color: #aaa79e;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 26rpx;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.primary-button,
+.secondary-button {
+  margin-top: 24rpx;
+}
+
+.privacy-note,
+.inline-error {
+  margin-top: 22rpx;
+  font-size: 22rpx;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.privacy-note { color: #8c8a82; }
+.inline-error { color: #a63d31; }
+
+.status-card {
+  padding-top: 56rpx;
+  padding-bottom: 50rpx;
+  text-align: center;
+}
+
+.error-mark {
+  position: relative;
+  width: 62rpx;
+  height: 62rpx;
+  margin: 0 auto 26rpx;
+  border: 4rpx solid #a63d31;
+  border-radius: 50%;
+}
+
+.error-line {
+  position: absolute;
+  left: 26rpx;
+  top: 13rpx;
+  width: 5rpx;
+  height: 33rpx;
+  border-radius: 3rpx;
+  background: #a63d31;
+}

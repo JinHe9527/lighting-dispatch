@@ -1,0 +1,96 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">NEW REQUEST</view>
+      <view class="page-title">创建工单</view>
+      <view class="page-subtitle">提交后网站端立即出现同一张工单</view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在读取规则</view></view>
+
+  <view wx:else class="card request-card">
+    <view class="form-section first-section">
+      <view class="form-index">01</view>
+      <view class="form-heading">任务归属</view>
+      <view class="field">
+        <text class="field-label">直播团队</text>
+        <picker range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="changeTeam">
+          <view class="picker-control">{{teams[teamIndex].name || '请选择团队'}}</view>
+        </picker>
+      </view>
+      <view class="field-row">
+        <view class="field grow">
+          <text class="field-label">处理组</text>
+          <picker range="{{groups}}" range-key="name" value="{{groupIndex}}" bindchange="changeGroup">
+            <view class="picker-control">{{groups[groupIndex].name || '请选择'}}</view>
+          </picker>
+        </view>
+        <view class="field grow">
+          <text class="field-label">任务类型</text>
+          <picker range="{{tasks}}" range-key="task_type" value="{{taskIndex}}" bindchange="changeTask">
+            <view class="picker-control">{{useCustomTask ? '自定义任务' : (tasks[taskIndex].task_type || '自定义任务')}}</view>
+          </picker>
+        </view>
+      </view>
+      <button class="custom-task-toggle" bindtap="toggleCustomTask">{{useCustomTask ? '返回已配置任务列表' : '任务不在列表？填写自定义任务'}}</button>
+      <view wx:if="{{useCustomTask}}" class="field">
+        <text class="field-label">自定义任务</text>
+        <input class="field-control" placeholder="用 2–80 个字说明要做什么" value="{{customTask}}" bindinput="changeCustomTask" />
+      </view>
+      <view wx:if="{{assignees.length > 1}}" class="field">
+        <text class="field-label">负责人（可选）</text>
+        <picker range="{{assignees}}" range-key="name" value="{{assigneeIndex}}" bindchange="changeAssignee">
+          <view class="picker-control">{{assignees[assigneeIndex].name}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="form-section">
+      <view class="form-index">02</view>
+      <view class="form-heading">到岗时间</view>
+      <view class="when-tabs">
+        <button class="when-button {{when === 'now' ? 'active' : ''}}" data-when="now" bindtap="selectWhen">立即处理</button>
+        <button class="when-button {{when === 'auto' ? 'active' : ''}}" data-when="auto" bindtap="selectWhen">按团队排期</button>
+        <button class="when-button {{when === 'book' ? 'active' : ''}}" data-when="book" bindtap="selectWhen">预约时间</button>
+      </view>
+      <view wx:if="{{when === 'book'}}" class="field-row">
+        <view class="field grow">
+          <text class="field-label">日期</text>
+          <picker mode="date" value="{{date}}" start="{{date}}" bindchange="changeDate"><view class="picker-control">{{date}}</view></picker>
+        </view>
+        <view class="field grow">
+          <text class="field-label">开始时间</text>
+          <picker mode="time" value="{{at}}" bindchange="changeTime"><view class="picker-control">{{at}}</view></picker>
+        </view>
+      </view>
+      <view class="field">
+        <text class="field-label">预计时长（分钟）</text>
+        <input class="field-control" type="number" value="{{minutes}}" bindblur="changeMinutes" />
+      </view>
+    </view>
+
+    <view class="form-section">
+      <view class="form-index">03</view>
+      <view class="form-heading">现场说明</view>
+      <view class="field">
+        <text class="field-label">备注 / 问题描述</text>
+        <textarea class="field-textarea" placeholder="设备组请写清问题；其他任务可补充现场要求" value="{{note}}" bindinput="changeNote"></textarea>
+      </view>
+      <view class="attachment-row">
+        <button class="attachment-button" bindtap="chooseAudio">选择音频</button>
+        <button class="attachment-button" bindtap="chooseVideo">选择视频</button>
+      </view>
+      <view wx:if="{{audioFile}}" class="file-chip"><text>音频 · {{audioFile.name}}</text><button data-kind="audio" bindtap="clearFile">移除</button></view>
+      <view wx:if="{{videoFile}}" class="file-chip"><text>视频 · {{videoFile.name}}</text><button data-kind="video" bindtap="clearFile">移除</button></view>
+      <view wx:if="{{me.role === 'admin' || (me.role === 'staff' && me.lead)}}" class="urgent-row">
+        <view><view class="urgent-title">加急工单</view><view class="urgent-note">通知将按系统加急规则发送</view></view>
+        <switch color="#d8922b" checked="{{urgent}}" bindchange="changeUrgent" />
+      </view>
+    </view>
+
+    <button class="primary-button submit-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="submit">确认创建工单</button>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="request" user="{{me}}"></app-nav>

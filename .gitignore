@@ -12,3 +12,4 @@ app/backups/
 node_modules/
 playwright-report/
 test-results/
+miniprogram/project.private.config.json

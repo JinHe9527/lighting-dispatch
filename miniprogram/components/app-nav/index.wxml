@@ -1,0 +1,14 @@
+<view class="nav-wrap">
+  <view class="nav-rail">
+    <button
+      wx:for="{{items}}"
+      wx:key="key"
+      class="nav-item {{active === item.key ? 'active' : ''}}"
+      data-item="{{item}}"
+      bindtap="navigate"
+    >
+      <view class="nav-mark"></view>
+      <text>{{item.label}}</text>
+    </button>
+  </view>
+</view>

@@ -1,0 +1,84 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">SYSTEM CONTROL</view>
+      <view class="page-title">系统设置</view>
+      <view class="page-subtitle">与网站管理端共同维护同一套配置</view>
+    </view>
+  </view>
+
+  <scroll-view scroll-x class="tab-scroll" show-scrollbar="false">
+    <button wx:for="{{tabs}}" wx:key="key" class="tab-button {{tab === item.key ? 'active' : ''}}" data-tab="{{item.key}}" bindtap="selectTab">{{item.label}}</button>
+  </scroll-view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在读取配置</view></view>
+
+  <block wx:else>
+    <view wx:if="{{tab !== 'rules'}}" class="settings-list">
+      <view wx:for="{{list}}" wx:key="*this" class="card setting-row">
+        <button class="setting-main" data-id="{{item.open_id || item.id}}" bindtap="openEdit">
+          <block wx:if="{{tab === 'accounts'}}">
+            <strong>{{item.name}}</strong><text>{{item.typeText}} · {{item.accessText}}</text><text>{{item.metaText}}</text>
+          </block>
+          <block wx:elif="{{tab === 'teams'}}"><strong>{{item.name}}</strong><text>{{item.room || '未设置房间'}}</text><text>彩排 {{item.rehearsal || '—'}} · 开播 {{item.onair || '—'}}</text></block>
+          <block wx:elif="{{tab === 'sla'}}"><strong>{{item.task_type}}</strong><text>{{item.grp}} · {{item.minutes}}分钟 + 缓冲{{item.buffer}}分钟</text><text>{{item.note || '未填写说明'}}</text></block>
+          <block wx:elif="{{tab === 'shifts'}}"><strong>{{item.name}}</strong><text>{{item.start}}–{{item.end}}</text></block>
+          <block wx:else><strong>{{item.name}}</strong><text>排序 {{item.sort}} · {{item.auto ? '自动派单' : '人工派单'}}</text><text>{{item.color}}</text></block>
+        </button>
+        <button wx:if="{{tab !== 'accounts'}}" class="remove-button" data-id="{{item.id}}" bindtap="removeItem">删除</button>
+      </view>
+      <view wx:if="{{!list.length}}" class="card empty-state"><view class="state-title">当前没有配置项</view></view>
+      <button wx:if="{{tab !== 'accounts'}}" class="primary-button create-button" bindtap="openCreate">新增{{tab === 'teams' ? '团队' : tab === 'sla' ? '任务' : tab === 'shifts' ? '班次' : '分组'}}</button>
+    </view>
+
+    <view wx:else class="card rule-list">
+      <view wx:for="{{ruleItems}}" wx:key="key" class="rule-row">
+        <view><strong>{{item.label}}</strong><text wx:if="{{item.suffix}}">单位：{{item.suffix}}</text></view>
+        <switch wx:if="{{item.type === 'switch'}}" color="#D8922B" checked="{{item.value === '1'}}" data-key="{{item.key}}" data-type="switch" bindchange="saveRule" />
+        <input wx:else class="rule-input" type="number" value="{{item.value}}" data-key="{{item.key}}" data-type="number" bindblur="saveRule" />
+      </view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{modal}}" class="modal-mask" bindtap="closeModal">
+  <view class="modal-card" catchtap="stopPropagation">
+    <view class="modal-head"><view><view class="page-kicker">EDIT CONFIG</view><view class="modal-title">{{modal.title}}</view></view><button bindtap="closeModal">关闭</button></view>
+
+    <block wx:if="{{modal.entity === 'accounts'}}">
+      <view class="field"><text class="field-label">显示名（空则使用飞书名）</text><input class="field-control" value="{{form.alias}}" data-field="alias" bindinput="updateField" /></view>
+      <view class="field"><text class="field-label">账号类型</text><picker range="{{accountTypes}}" range-key="label" value="{{accountTypeIndex}}" bindchange="selectAccountType"><view class="picker-control">{{accountTypes[accountTypeIndex].label}}</view></picker></view>
+      <view class="field"><text class="field-label">访问状态</text><picker range="{{accessTypes}}" range-key="label" value="{{accessIndex}}" bindchange="selectAccess"><view class="picker-control">{{accessTypes[accessIndex].label}}</view></picker></view>
+      <view wx:if="{{accountTypes[accountTypeIndex].key === 'team'}}" class="field"><text class="field-label">绑定直播团队</text><picker range="{{state.teams}}" range-key="name" value="{{teamIndex}}" bindchange="selectAccountTeam"><view class="picker-control">{{state.teams[teamIndex].name || '请选择'}}</view></picker></view>
+      <view wx:if="{{accountTypes[accountTypeIndex].key === 'staff' || accountTypes[accountTypeIndex].key === 'intern' || accountTypes[accountTypeIndex].key === 'lead'}}" class="field"><text class="field-label">所属分组</text><picker range="{{state.groups}}" range-key="name" value="{{groupIndex}}" bindchange="selectAccountGroup"><view class="picker-control">{{state.groups[groupIndex].name || '请选择'}}</view></picker></view>
+    </block>
+
+    <block wx:elif="{{modal.entity === 'teams'}}">
+      <view class="field"><text class="field-label">团队名称</text><input class="field-control" value="{{form.name}}" data-field="name" bindinput="updateField" /></view>
+      <view class="field"><text class="field-label">直播房间</text><input class="field-control" value="{{form.room}}" data-field="room" bindinput="updateField" /></view>
+      <view class="field-row"><view class="field grow"><text class="field-label">彩排时间</text><input class="field-control" value="{{form.rehearsal}}" data-field="rehearsal" bindinput="updateField" /></view><view class="field grow"><text class="field-label">开播时间</text><input class="field-control" value="{{form.onair}}" data-field="onair" bindinput="updateField" /></view></view>
+    </block>
+
+    <block wx:elif="{{modal.entity === 'sla'}}">
+      <view class="field"><text class="field-label">任务名称</text><input class="field-control" value="{{form.task_type}}" data-field="task_type" bindinput="updateField" /></view>
+      <view class="field"><text class="field-label">处理组</text><picker range="{{state.groups}}" range-key="name" value="{{groupIndex}}" bindchange="selectFormGroup"><view class="picker-control">{{state.groups[groupIndex].name}}</view></picker></view>
+      <view class="field-row"><view class="field grow"><text class="field-label">标准分钟</text><input class="field-control" type="number" value="{{form.minutes}}" data-field="minutes" bindinput="updateField" /></view><view class="field grow"><text class="field-label">缓冲分钟</text><input class="field-control" type="number" value="{{form.buffer}}" data-field="buffer" bindinput="updateField" /></view></view>
+      <view class="field"><text class="field-label">说明</text><textarea class="field-textarea compact-textarea" value="{{form.note}}" data-field="note" bindinput="updateField"></textarea></view>
+    </block>
+
+    <block wx:elif="{{modal.entity === 'shifts'}}">
+      <view class="field"><text class="field-label">班次名称</text><input class="field-control" value="{{form.name}}" data-field="name" bindinput="updateField" /></view>
+      <view class="field-row"><view class="field grow"><text class="field-label">开始</text><input class="field-control" value="{{form.start}}" data-field="start" bindinput="updateField" /></view><view class="field grow"><text class="field-label">结束</text><input class="field-control" value="{{form.end}}" data-field="end" bindinput="updateField" /></view></view>
+    </block>
+
+    <block wx:else>
+      <view class="field"><text class="field-label">分组名称</text><input class="field-control" value="{{form.name}}" data-field="name" bindinput="updateField" /></view>
+      <view class="field-row"><view class="field grow"><text class="field-label">颜色</text><input class="field-control" value="{{form.color}}" data-field="color" bindinput="updateField" /></view><view class="field grow"><text class="field-label">排序</text><input class="field-control" type="number" value="{{form.sort}}" data-field="sort" bindinput="updateField" /></view></view>
+      <view class="switch-field"><text>自动公平派单</text><switch color="#D8922B" checked="{{form.auto}}" data-field="auto" bindchange="updateSwitchField" /></view>
+    </block>
+
+    <button class="primary-button modal-submit" loading="{{submitting}}" bindtap="saveForm">保存配置</button>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="" user="{{me}}"></app-nav>

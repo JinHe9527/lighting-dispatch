@@ -1,0 +1,8 @@
+.search-control { height: 76rpx; margin-bottom: 18rpx; padding: 0 24rpx; border: 1rpx solid #d8d3c8; border-radius: 17rpx; background: #fffdfa; font-size: 24rpx; }
+.audit-list { display: flex; flex-direction: column; gap: 13rpx; }
+.audit-row { padding: 21rpx 22rpx; }
+.audit-top { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.audit-top strong { font-size: 24rpx; }
+.audit-top text { color: #8c8a82; font-family: Menlo, monospace; font-size: 18rpx; }
+.audit-name { margin-top: 10rpx; color: #98651a; font-size: 20rpx; font-weight: 700; }
+.audit-detail { margin-top: 11rpx; padding-top: 11rpx; border-top: 1rpx solid #ebe7de; color: #686962; font-size: 21rpx; line-height: 1.55; }

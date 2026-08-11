@@ -1,6 +1,6 @@
 # 团播派工系统
 
-面向团队下单人、工作人员、组长和管理员的内部派工系统。后端仅使用 Python 标准库和 SQLite，前端为单页应用，支持飞书 OAuth、消息通知和任务提醒。
+面向团队下单人、工作人员、组长和管理员的内部派工系统。后端仅使用 Python 标准库和 SQLite，前端为单页应用，支持飞书 OAuth、微信小程序登录、消息通知和任务提醒。
 
 ## Windows 正式部署
 
@@ -47,6 +47,8 @@ bash /home/ubuntu/wuyou-dispatch-release/install-linux.sh
 ```text
 DISPATCH_APP_ID=飞书应用ID
 DISPATCH_APP_SECRET=飞书应用密钥
+DISPATCH_WECHAT_APP_ID=微信小程序AppID
+DISPATCH_WECHAT_APP_SECRET=微信小程序AppSecret
 DISPATCH_BASE_URL=https://你的公网域名
 DISPATCH_TEST_MODE=0
 ```
@@ -61,6 +63,8 @@ DISPATCH_BASE_URL=https://wuyoupaiban.cn
 网页应用移动端主页=https://wuyoupaiban.cn
 OAuth 重定向 URL=https://wuyoupaiban.cn/auth/callback
 ```
+
+微信小程序工程位于项目根目录的 `miniprogram`。小程序使用原生页面直接调用现有 HTTPS API，与网站共用同一服务器、数据库、角色和业务规则。个人主体不使用 `web-view`，微信公众平台只需配置 request、uploadFile 和 downloadFile 合法域名，完整步骤见 `docs/微信小程序配置指引.md`。
 
 Linux 部署前应先为 `wuyoupaiban.cn` 申请证书，证书路径必须为：
 

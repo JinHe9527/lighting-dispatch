@@ -270,10 +270,17 @@ async function auditMobileAccount(page, profile) {
     focusLabel: document.activeElement?.getAttribute("aria-label") || "",
   }));
   if (accountState.name !== expected.name || !accountState.role.startsWith(expected.role) ||
-      accountState.actions.join("|") !== "alerts|theme|refresh|logout" || accountState.focusLabel !== "关闭") {
+      accountState.actions.join("|") !== "wechat|alerts|theme|refresh|logout" || accountState.focusLabel !== "关闭") {
     throw new Error(`${profile} 手机账户 Sheet 信息或操作不完整：${JSON.stringify(accountState)}`);
   }
   await auditAccessibility(page, `${profile}/mobile/account`);
+  await page.locator('[data-account-action="wechat"]').click();
+  await page.getByText("绑定微信小程序", { exact: true }).waitFor();
+  await page.locator("#wechatBindCode").click();
+  await page.waitForFunction(() => /^\d{8}$/.test(document.querySelector(".wechat-bind-code")?.textContent.trim() || ""));
+  await page.locator('.modal [data-close]').first().click();
+  await account.click();
+  await page.locator(".account-sheet").waitFor();
   await page.locator('[data-account-action="logout"]').click();
   await page.locator(".cfm").waitFor();
   await page.locator(".cfm-cancel").click();
@@ -300,6 +307,17 @@ async function auditMobileAccount(page, profile) {
   });
   await login(admin, "admin");
   process.stdout.write("Admin logged in\n");
+  await admin.locator("#accountMenu").click();
+  await admin.locator(".account-sheet").waitFor();
+  const desktopAccountActions = await admin.locator(".account-sheet [data-account-action]").evaluateAll(
+    buttons => buttons.map(button => button.dataset.accountAction).join("|")
+  );
+  if (desktopAccountActions !== "wechat|alerts|theme|refresh|logout") {
+    throw new Error(`桌面账户菜单操作不完整：${desktopAccountActions}`);
+  }
+  await admin.locator('[data-account-action="wechat"]').click();
+  await admin.getByText("绑定微信小程序", { exact: true }).waitFor();
+  await admin.locator('.modal [data-close]').first().click();
   await auditSemanticContrast(admin, "admin/light");
   const manifestAudit = await (await adminContext.newCDPSession(admin)).send("Page.getAppManifest");
   if (!manifestAudit.data || manifestAudit.errors.length) {
@@ -634,6 +652,40 @@ async function auditMobileAccount(page, profile) {
   await admin.locator("#alertBtn").click();
   const alertDialog = admin.locator('[role="dialog"]');
   await alertDialog.waitFor();
+  const alertSound = await admin.evaluate(() => {
+    const previous = _ac;
+    const oscillators = [];
+    const peaks = [];
+    _ac = {
+      currentTime: 10,
+      destination: {},
+      state: "suspended",
+      resume() { this.state = "running"; this.resumed = (this.resumed || 0) + 1; return Promise.resolve(); },
+      createOscillator() {
+        const oscillator = { frequency: { value: 0 }, type: "", connect() {}, start(at) { this.started = at; }, stop(at) { this.stopped = at; oscillators.push(this); } };
+        return oscillator;
+      },
+      createGain() {
+        return { connect() {}, gain: { setValueAtTime(value) { peaks.push(value); }, exponentialRampToValueAtTime(value) { peaks.push(value); } } };
+      },
+    };
+    return playAlertSound().then(() => {
+      const resumed = _ac.resumed || 0;
+      _ac = previous;
+      const starts = oscillators.map(item => item.started);
+      const stops = oscillators.map(item => item.stopped);
+      return {
+        notes: oscillators.length,
+        duration: Math.max(...stops) - Math.min(...starts),
+        peak: Math.max(...peaks),
+        resumed,
+        types: oscillators.map(item => item.type),
+      };
+    });
+  });
+  if (alertSound.notes !== 9 || alertSound.duration < 4.1 || alertSound.peak < 0.7 || alertSound.resumed !== 1 || alertSound.types.some(type => type !== "triangle")) {
+    throw new Error(`新单提示音不够响亮或时长不足：${JSON.stringify(alertSound)}`);
+  }
   await admin.keyboard.press("Escape");
   await alertDialog.waitFor({ state: "detached" });
   if (!await admin.locator("#alertBtn").evaluate(button => document.activeElement === button)) throw new Error("提醒设置关闭后焦点未恢复");

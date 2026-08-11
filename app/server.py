@@ -12,9 +12,13 @@
 运行:  python3 app/server.py     → http://<本机IP>:8848
 环境(.env,项目根):
   DISPATCH_APP_ID / DISPATCH_APP_SECRET   「灯光派工」飞书应用凭据(配好后启用真实登录+通知)
+  DISPATCH_WECHAT_APP_ID / DISPATCH_WECHAT_APP_SECRET  微信小程序登录凭据
   DISPATCH_BASE_URL                        HTTPS 对外地址(OAuth 回调用)
   DISPATCH_HOST / DISPATCH_PORT            默认 0.0.0.0 / 8848
 """
+import hashlib
+import hmac
+import io
 import ipaddress
 import json
 import logging
@@ -47,6 +51,7 @@ PROJECT = ROOT.parent
 LEGACY_JSON = ROOT / "data.json"
 FEISHU = "https://open.feishu.cn/open-apis"
 AUTHORIZE_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+WECHAT_API = "https://api.weixin.qq.com"
 
 SESSION_DAYS = 30
 TECH_STATUS = ("free", "busy", "check", "rest", "off")
@@ -78,23 +83,27 @@ def load_dotenv():
 load_dotenv()
 APP_ID = os.environ.get("DISPATCH_APP_ID", "").strip()
 APP_SECRET = os.environ.get("DISPATCH_APP_SECRET", "").strip()
+WECHAT_APP_ID = os.environ.get("DISPATCH_WECHAT_APP_ID", "").strip()
+WECHAT_APP_SECRET = os.environ.get("DISPATCH_WECHAT_APP_SECRET", "").strip()
 BASE_URL = os.environ.get("DISPATCH_BASE_URL", "").strip().rstrip("/") or "http://localhost:8848"
 COOKIE_SECURE = "; Secure" if BASE_URL.lower().startswith("https://") else ""
 HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
-SERVER_VERSION = "v0803c"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+SERVER_VERSION = "v0806a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
     else DATA_ROOT / ("dispatch-test.db" if TEST_MODE else "dispatch.db")
 FEISHU_CONFIGURED = bool(APP_ID and APP_SECRET) and not TEST_MODE
+WECHAT_CONFIGURED = bool(WECHAT_APP_ID and WECHAT_APP_SECRET) and not TEST_MODE
 MAX_REQUEST_BYTES = 64 * 1024
 MEDIA_DIR = DATA_ROOT / "media"
 MEDIA_MAX_BYTES = 30 * 1024 * 1024
 MEDIA_PENDING_FILE_LIMIT = 6
 MEDIA_PENDING_BYTES = 180 * 1024 * 1024
 MEDIA_DISK_RESERVE_BYTES = 512 * 1024 * 1024
+WECHAT_BIND_CODE_SECONDS = 10 * 60
 LOG_DIR = DATA_ROOT / "logs"
 BACKUP_DIR = Path(os.environ.get("DISPATCH_BACKUP_DIR", "").strip()) if os.environ.get("DISPATCH_BACKUP_DIR", "").strip() \
     else DATA_ROOT / "backups"
@@ -176,6 +185,21 @@ CREATE TABLE IF NOT EXISTS sessions(
   sid TEXT PRIMARY KEY, open_id TEXT NOT NULL,
   created_at TEXT, expires_at TEXT
 );
+CREATE TABLE IF NOT EXISTS wechat_accounts(
+  wx_openid TEXT PRIMARY KEY,
+  user_open_id TEXT NOT NULL UNIQUE,
+  bound_at TEXT NOT NULL,
+  last_login TEXT DEFAULT '',
+  FOREIGN KEY(user_open_id) REFERENCES users(open_id)
+);
+CREATE TABLE IF NOT EXISTS wechat_bind_codes(
+  code_hash TEXT PRIMARY KEY,
+  user_open_id TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT DEFAULT '',
+  FOREIGN KEY(user_open_id) REFERENCES users(open_id)
+);
 CREATE TABLE IF NOT EXISTS audit(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts TEXT NOT NULL, open_id TEXT, name TEXT,
@@ -187,6 +211,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sla_task_type ON sla(task_type);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_name ON shifts(name);
 CREATE INDEX IF NOT EXISTS idx_orders_status_assignee ON orders(status,assignee_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_wechat_bind_codes_expires ON wechat_bind_codes(expires_at);
 """
 
 DEFAULT_SLA = [
@@ -616,6 +641,223 @@ def fetch_user_info(user_token):
     return {"open_id": d["open_id"], "union_id": d.get("union_id", ""),
             "name": d.get("name") or d.get("en_name") or "未命名",
             "avatar": d.get("avatar_url") or d.get("avatar_thumb") or ""}
+
+
+# ───────────────────────── 微信小程序认证 ─────────────────────────
+def account_approved(user):
+    return bool(
+        user
+        and not user.get("blocked", 0)
+        and (user.get("role") == "admin" or user.get("approved", 0))
+    )
+
+
+def wechat_code_exchange(code):
+    """用小程序登录 code 换取 wx_openid；AppSecret 只在服务端使用。"""
+    code = str(code or "").strip()
+    if not code:
+        raise ValueError("缺少微信登录凭证")
+    if not WECHAT_CONFIGURED:
+        raise RuntimeError("微信小程序登录尚未配置")
+    query = urllib.parse.urlencode({
+        "appid": WECHAT_APP_ID,
+        "secret": WECHAT_APP_SECRET,
+        "js_code": code,
+        "grant_type": "authorization_code",
+    })
+    request = urllib.request.Request(
+        f"{WECHAT_API}/sns/jscode2session?{query}",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError("微信登录服务暂时不可用") from error
+    if result.get("errcode") or not result.get("openid"):
+        raise ValueError("微信登录凭证已失效，请重试")
+    return result["openid"]
+
+
+def _wechat_digest(value):
+    secret = WECHAT_APP_SECRET or "dispatch-wechat-test-secret"
+    return hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _wechat_expiry(seconds):
+    return (datetime.now() + timedelta(seconds=seconds)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _wechat_session(conn, user):
+    stamp = now_iso()
+    sid = secrets.token_urlsafe(32)
+    conn.execute("DELETE FROM sessions WHERE expires_at<=?", (stamp,))
+    conn.execute(
+        "INSERT INTO sessions(sid,open_id,created_at,expires_at) VALUES(?,?,?,?)",
+        (
+            sid,
+            user["open_id"],
+            stamp,
+            (datetime.now() + timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S"),
+        ),
+    )
+    conn.execute("UPDATE users SET last_login=? WHERE open_id=?", (stamp, user["open_id"]))
+    conn.execute(
+        "UPDATE wechat_accounts SET last_login=? WHERE user_open_id=?",
+        (stamp, user["open_id"]),
+    )
+    return {
+        "session_token": sid,
+        "user": {
+            key: user.get(key)
+            for key in ("open_id", "name", "avatar", "role", "grp", "lead", "team_id", "read_only")
+        },
+    }
+
+
+def create_wechat_bind_code(user):
+    if not (WECHAT_CONFIGURED or TEST_MODE):
+        return 503, "微信小程序登录尚未配置"
+    if not account_approved(user):
+        return 403, "账号未获授权或已被停用"
+    conn = db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            "SELECT 1 FROM wechat_accounts WHERE user_open_id=?", (user["open_id"],)
+        ).fetchone()
+        if existing:
+            conn.rollback()
+            return 409, "当前账号已经绑定微信小程序"
+        code = f"{secrets.randbelow(100_000_000):08d}"
+        expires_at = _wechat_expiry(WECHAT_BIND_CODE_SECONDS)
+        conn.execute("DELETE FROM wechat_bind_codes WHERE user_open_id=?", (user["open_id"],))
+        conn.execute(
+            """INSERT INTO wechat_bind_codes(
+                 code_hash,user_open_id,created_at,expires_at,used_at
+               ) VALUES(?,?,?,?, '')""",
+            (_wechat_digest(code), user["open_id"], now_iso(), expires_at),
+        )
+        insert_audit(conn, user, "生成微信绑定码", "绑定码 10 分钟内有效")
+        conn.commit()
+        return 200, {"code": code, "expires_at": expires_at}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def wechat_login(code):
+    wx_openid = wechat_code_exchange(code)
+    conn = db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT u.* FROM wechat_accounts wa
+               JOIN users u ON u.open_id=wa.user_open_id
+               WHERE wa.wx_openid=?""",
+            (wx_openid,),
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            return 200, {"bound": False}
+        user = dict(row)
+        if not account_approved(user):
+            conn.rollback()
+            return 403, "账号未获授权或已被停用，请联系管理员"
+        result = _wechat_session(conn, user)
+        insert_audit(conn, user, "登录", "微信小程序")
+        conn.commit()
+        return 200, {"bound": True, **result}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def bind_wechat_account(code, bind_code):
+    wx_openid = wechat_code_exchange(code)
+    bind_code = str(bind_code or "").strip()
+    if len(bind_code) != 8 or not bind_code.isdigit():
+        return 400, "请输入现有账号生成的 8 位绑定码"
+    conn = db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        binding = conn.execute(
+            """SELECT bc.*,u.* FROM wechat_bind_codes bc
+               JOIN users u ON u.open_id=bc.user_open_id
+               WHERE bc.code_hash=?""",
+            (_wechat_digest(bind_code),),
+        ).fetchone()
+        if not binding:
+            conn.rollback()
+            return 403, "绑定码不正确"
+        user = dict(binding)
+        if binding["used_at"] or binding["expires_at"] <= now_iso():
+            conn.rollback()
+            return 410, "绑定码已失效，请在现有系统中重新生成"
+        if not account_approved(user):
+            conn.rollback()
+            return 403, "账号未获授权或已被停用"
+        linked_wechat = conn.execute(
+            "SELECT user_open_id FROM wechat_accounts WHERE wx_openid=?", (wx_openid,)
+        ).fetchone()
+        linked_user = conn.execute(
+            "SELECT wx_openid FROM wechat_accounts WHERE user_open_id=?", (user["open_id"],)
+        ).fetchone()
+        if linked_wechat and linked_wechat["user_open_id"] != user["open_id"]:
+            conn.rollback()
+            return 409, "此微信账号已绑定其他系统账号"
+        if linked_user and linked_user["wx_openid"] != wx_openid:
+            conn.rollback()
+            return 409, "此系统账号已绑定其他微信账号"
+        conn.execute(
+            """INSERT OR IGNORE INTO wechat_accounts(wx_openid,user_open_id,bound_at,last_login)
+               VALUES(?,?,?, '')""",
+            (wx_openid, user["open_id"], now_iso()),
+        )
+        conn.execute(
+            "UPDATE wechat_bind_codes SET used_at=? WHERE code_hash=? AND used_at=''",
+            (now_iso(), binding["code_hash"]),
+        )
+        result = _wechat_session(conn, user)
+        insert_audit(conn, user, "绑定微信小程序", "微信身份已与现有账号关联")
+        conn.commit()
+        return 200, {"bound": True, **result}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def unbind_wechat_account(actor, user_open_id):
+    target = str(user_open_id or actor["open_id"]).strip()
+    if target != actor["open_id"] and (
+        actor["role"] != "admin" or actor.get("read_only", 0)
+    ):
+        return 403, "只能解除自己的微信绑定"
+    conn = db()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        user = conn.execute("SELECT * FROM users WHERE open_id=?", (target,)).fetchone()
+        if not user:
+            conn.rollback()
+            return 404, "账号不存在"
+        conn.execute("DELETE FROM wechat_accounts WHERE user_open_id=?", (target,))
+        conn.execute("DELETE FROM wechat_bind_codes WHERE user_open_id=?", (target,))
+        conn.execute("DELETE FROM sessions WHERE open_id=?", (target,))
+        insert_audit(conn, actor, "解除微信绑定", f"账号 {user['name']}")
+        conn.commit()
+        return 200, None
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def user_dept_ids(open_id):
@@ -1272,6 +1514,7 @@ def run_scheduled_jobs():
         ).fetchall()
         conn.executemany("UPDATE uploads SET status='expired' WHERE id=?", [(row["id"],) for row in old_uploads])
         conn.execute("DELETE FROM sessions WHERE expires_at<=?", (stamp,))
+        conn.execute("DELETE FROM wechat_bind_codes WHERE used_at!='' OR expires_at<=?", (stamp,))
         conn.execute(
             "DELETE FROM notification_outbox WHERE status='sent' AND sent_at<?",
             (business.format_dt(now - timedelta(days=30)),),
@@ -1424,12 +1667,16 @@ def api_state(user):
     me["fs_name"] = me["name"]
     me["name"] = amap.get(user["open_id"], me["name"])
     me["approved"] = 1 if approved else 0
+    me["wechat_bound"] = 1 if conn.execute(
+        "SELECT 1 FROM wechat_accounts WHERE user_open_id=?", (user["open_id"],)
+    ).fetchone() else 0
     if not approved:
         conn.close()
         return {
             "me": me,
             "groups": [], "staff": [], "teams": [], "sla": [], "shifts": [], "orders": [],
             "test_mode": TEST_MODE, "server_version": SERVER_VERSION, "bootstrap_open": False,
+            "wechat": {"configured": WECHAT_CONFIGURED or TEST_MODE, "bound": bool(me["wechat_bound"])},
             "rules": {"gate_mode": settings.get("gate_mode", "manual")},
         }
 
@@ -1528,6 +1775,7 @@ def api_state(user):
            "shifts": shifts, "orders": orders, "test_mode": TEST_MODE,
            "server_version": SERVER_VERSION,
            "bootstrap_open": settings.get("bootstrap_used") != "1",
+           "wechat": {"configured": WECHAT_CONFIGURED or TEST_MODE, "bound": bool(me["wechat_bound"])},
            "reminder": dict(zip(("on", "minutes"), reminder_conf())),
            "urgent_on": settings.get("urgent_on", "0") == "1",
            "rules": {"team_cap": settings.get("book_team_cap", "2"),
@@ -1548,7 +1796,8 @@ def api_state(user):
             """SELECT open_id,name,COALESCE(alias,'') alias,avatar,role,grp,lead,intern,
                       absence_type,absence_start,absence_end,
                       shift,status,last_login,COALESCE(approved,0) approved,
-                      COALESCE(blocked,0) blocked,COALESCE(read_only,0) read_only,team_id
+                      COALESCE(blocked,0) blocked,COALESCE(read_only,0) read_only,team_id,
+                      EXISTS(SELECT 1 FROM wechat_accounts wa WHERE wa.user_open_id=users.open_id) wechat_bound
                FROM users ORDER BY role DESC,grp,name""")]
         for u2 in out["users"]:
             u2["fs_name"] = u2["name"]
@@ -2156,6 +2405,7 @@ def do_save(user, body):
             conn.execute("UPDATE teams SET lighting_owner_id='' WHERE lighting_owner_id=?", (oid,))
         if fields.get("blocked") == 1 or fields.get("approved") == 0:
             conn.execute("DELETE FROM sessions WHERE open_id=?", (oid,))
+            conn.execute("DELETE FROM wechat_bind_codes WHERE user_open_id=?", (oid,))
         target_desc = target_user["name"]
     else:
         rid = record_id(rec.get("id"))
@@ -2637,6 +2887,8 @@ class Handler(BaseHTTPRequestHandler):
     def _redirect(self, url, cookies=None):
         self.send_response(302)
         self.send_header("Location", url)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
         if COOKIE_SECURE:
             self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         for c in (cookies or []):
@@ -2659,9 +2911,15 @@ class Handler(BaseHTTPRequestHandler):
             self.headers.get("X-Forwarded-For", ""),
         )
 
+    def _session_id(self):
+        authorization = (self.headers.get("Authorization") or "").strip()
+        if authorization.startswith("Bearer "):
+            return authorization[7:].strip()
+        return self._cookie("sid")
+
     def _user(self):
         if not hasattr(self, "_cached_user"):
-            self._cached_user = session_user(self._cookie("sid"))
+            self._cached_user = session_user(self._session_id())
         return self._cached_user
 
     def _rate_key(self):
@@ -2672,11 +2930,7 @@ class Handler(BaseHTTPRequestHandler):
 
     @staticmethod
     def _approved(user):
-        return bool(
-            user
-            and not user.get("blocked", 0)
-            and (user.get("role") == "admin" or user.get("approved", 0))
-        )
+        return account_approved(user)
 
     @classmethod
     def _can_write(cls, user):
@@ -2701,7 +2955,45 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, {"ok": False, "msg": "账号未获授权或已被禁用"})
         if not self._can_write(u):
             return self._send(403, {"ok": False, "msg": "管理层只读账号不能上传或修改数据"})
-        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        raw_content_type = self.headers.get("Content-Type") or ""
+        ctype = raw_content_type.split(";")[0].strip().lower()
+        if ctype == "multipart/form-data":
+            n = int(self.headers.get("Content-Length", 0) or 0)
+            if n <= 0:
+                return self._send(400, {"ok": False, "msg": "空文件"})
+            if n > MEDIA_MAX_BYTES + 1024 * 1024:
+                return self._send(413, {"ok": False, "msg": f"文件过大(上限 {MEDIA_MAX_BYTES//1024//1024}MB)"})
+            boundary = ""
+            for part in raw_content_type.split(";")[1:]:
+                key, _, value = part.strip().partition("=")
+                if key.lower() == "boundary":
+                    boundary = value.strip().strip('"')
+                    break
+            if not boundary:
+                return self._send(400, {"ok": False, "msg": "上传格式无效"})
+            body = self.rfile.read(n)
+            file_data = None
+            file_type = ""
+            for part in body.split(("--" + boundary).encode("utf-8")):
+                header_blob, separator, payload = part.partition(b"\r\n\r\n")
+                if not separator or b'name="file"' not in header_blob:
+                    continue
+                file_data = payload[:-2] if payload.endswith(b"\r\n") else payload
+                header_text = header_blob.decode("utf-8", "replace")
+                for line in header_text.split("\r\n"):
+                    if line.lower().startswith("content-type:"):
+                        file_type = line.split(":", 1)[1].strip().lower()
+                    if "filename=" in line and not file_type:
+                        filename = line.split("filename=", 1)[1].strip().strip('"')
+                        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+                        file_type = EXT_CONTENT_TYPE.get(extension, "")
+                break
+            if file_data is None:
+                return self._send(400, {"ok": False, "msg": "没有找到上传文件"})
+            self.rfile = io.BytesIO(file_data)
+            self.headers.replace_header("Content-Length", str(len(file_data)))
+            self.headers.replace_header("Content-Type", file_type or "application/octet-stream")
+            return self._handle_upload()
         if not (ctype.startswith("audio/") or ctype.startswith("video/")):
             return self._send(400, {"ok": False, "msg": "只支持音频或视频文件"})
         n = int(self.headers.get("Content-Length", 0) or 0)
@@ -3056,12 +3348,42 @@ class Handler(BaseHTTPRequestHandler):
                     },
                 )
 
+            if path in ("/auth/wechat/session", "/auth/wechat/bind"):
+                try:
+                    if path == "/auth/wechat/session":
+                        code, result = wechat_login(body.get("code"))
+                    else:
+                        code, result = bind_wechat_account(body.get("code"), body.get("bind_code"))
+                except ValueError as error:
+                    return self._send(401, {"ok": False, "msg": str(error)})
+                except RuntimeError as error:
+                    status = 503 if "尚未配置" in str(error) else 502
+                    return self._send(status, {"ok": False, "msg": str(error)})
+                if code != 200:
+                    return self._send(code, {"ok": False, "msg": result})
+                payload = {"ok": True, **result}
+                return self._send(200, payload)
+
+            if path == "/auth/wechat/logout":
+                drop_session(self._session_id())
+                return self._send(200, {"ok": True})
+
             u = self._user()
             if not u:
                 return self._send(401, {"ok": False, "msg": "未登录"})
             # 准入门:待审核或禁用账号不能调用业务接口；管理层只读只能读取 GET 数据。
             if not self._approved(u) and path != "/api/claim-admin":
                 return self._send(403, {"ok": False, "msg": "账号未获授权或已被禁用，请联系管理员"})
+            if path == "/api/wechat/bind-code":
+                code, result = create_wechat_bind_code(u)
+                if code == 200:
+                    return self._send(200, {"ok": True, "data": result})
+                return self._send(code, {"ok": False, "msg": result})
+            if path == "/api/wechat/unbind":
+                code, result = unbind_wechat_account(u, body.get("user_open_id"))
+                if code == 200:
+                    return self._send(200, {"ok": True})
+                return self._send(code, {"ok": False, "msg": result})
             if not self._can_write(u):
                 return self._send(403, {"ok": False, "msg": "管理层只读账号只能查看，不能执行修改操作"})
 

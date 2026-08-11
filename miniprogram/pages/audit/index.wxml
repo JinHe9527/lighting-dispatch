@@ -1,0 +1,24 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">AUDIT TRAIL</view>
+      <view class="page-title">审计记录</view>
+      <view class="page-subtitle">网站与小程序操作统一留痕</view>
+    </view>
+  </view>
+
+  <input class="search-control" placeholder="搜索人员、动作或详情" value="{{search}}" bindinput="handleSearch" />
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在读取审计记录</view></view>
+  <view wx:elif="{{errorMessage}}" class="card error-state"><view class="state-title">加载失败</view><view class="state-copy">{{errorMessage}}</view></view>
+  <view wx:else class="audit-list">
+    <view wx:for="{{visibleRows}}" wx:key="*this" class="card audit-row">
+      <view class="audit-top"><strong>{{item.action}}</strong><text>{{item.ts}}</text></view>
+      <view class="audit-name">{{item.name || '系统'}}</view>
+      <view wx:if="{{item.detail}}" class="audit-detail">{{item.detail}}</view>
+    </view>
+    <view wx:if="{{!visibleRows.length}}" class="card empty-state"><view class="state-title">没有符合条件的记录</view></view>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="" user="{{me}}"></app-nav>

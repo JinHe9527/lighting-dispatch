@@ -1,0 +1,32 @@
+.schedule-toolbar { margin-bottom: 24rpx; }
+.range-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8rpx; padding: 6rpx; border-radius: 18rpx; background: #e7e3da; }
+.range-button { min-height: 66rpx; margin: 0; border-radius: 14rpx; background: transparent; color: #74726b; font-size: 23rpx; line-height: 1; }
+.range-button.active { background: #fffdfa; color: #23251f; font-weight: 700; box-shadow: 0 5rpx 16rpx rgba(54, 48, 36, 0.08); }
+.date-row { display: grid; grid-template-columns: 120rpx minmax(0, 1fr) 120rpx; align-items: center; gap: 10rpx; margin-top: 14rpx; }
+.date-step { min-height: 64rpx; margin: 0; padding: 0; border: 1rpx solid #d8d3c8; border-radius: 14rpx; background: #fffdfa; color: #6f6e67; font-size: 21rpx; line-height: 1; }
+.date-picker { height: 64rpx; border-radius: 14rpx; background: #252720; color: #fffdfa; font-family: Menlo, monospace; font-size: 24rpx; font-weight: 700; line-height: 64rpx; text-align: center; }
+.group-scroll { margin-top: 14rpx; white-space: nowrap; }
+.group-button { display: inline-flex; align-items: center; min-height: 58rpx; margin: 0 9rpx 0 0; padding: 0 20rpx; border: 1rpx solid #d8d3c8; border-radius: 999rpx; background: #fffdfa; color: #77756e; font-size: 20rpx; line-height: 1; }
+.group-button.active { border-color: #bd7c18; color: #95620f; font-weight: 700; }
+.day-list { display: flex; flex-direction: column; gap: 30rpx; }
+.day-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12rpx; padding: 0 4rpx; }
+.day-date { font-family: Georgia, serif; font-size: 34rpx; font-weight: 700; }
+.day-date.today { color: #a66b12; }
+.day-count { color: #85837b; font-size: 20rpx; }
+.assignment-row { display: grid; grid-template-columns: 58rpx minmax(0, 1fr) auto; align-items: center; gap: 16rpx; width: 100%; min-height: 102rpx; margin: 0; padding: 17rpx 20rpx; border-bottom: 1rpx solid #ebe7de; border-radius: 0; background: transparent; color: #1f211f; text-align: left; line-height: 1.3; }
+.assignment-row:last-child { border-bottom: 0; }
+.assignment-row.editable:active { background: #f5f2eb; }
+.person-mark { display: flex; align-items: center; justify-content: center; width: 58rpx; height: 58rpx; border-radius: 18rpx; background: #ebe7de; color: #66675f; font-family: "Songti SC", serif; font-size: 26rpx; font-weight: 700; }
+.assignment-main { min-width: 0; }
+.assignment-name { font-size: 25rpx; font-weight: 700; }
+.assignment-group { margin-top: 6rpx; color: #89877f; font-size: 19rpx; }
+.shift-label { max-width: 230rpx; padding: 10rpx 14rpx; border-radius: 12rpx; background: #e9f2e9; color: #347044; font-size: 19rpx; font-weight: 650; text-align: right; }
+.shift-label.off { background: #f1ece8; color: #8b625a; }
+.day-orders { display: flex; flex-direction: column; gap: 10rpx; margin-top: 12rpx; }
+.day-order { display: grid; grid-template-columns: 78rpx minmax(0, 1fr) auto; align-items: center; gap: 14rpx; min-height: 84rpx; margin: 0; padding: 14rpx 18rpx; border-left: 5rpx solid #d89a35; border-radius: 15rpx; background: #fffdfa; color: #24261f; text-align: left; line-height: 1.3; }
+.day-order-time { font-family: Menlo, monospace; font-size: 24rpx; font-weight: 700; }
+.day-order-main { min-width: 0; }
+.day-order-main strong,.day-order-main text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-order-main strong { font-size: 23rpx; }
+.day-order-main text { margin-top: 5rpx; color: #85837b; font-size: 19rpx; }
+.compact-empty { padding: 28rpx; }

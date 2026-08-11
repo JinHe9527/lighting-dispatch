@@ -1,0 +1,65 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">PERFORMANCE</view>
+      <view class="page-title">业务统计</view>
+      <view class="page-subtitle">统计口径与网站完全一致</view>
+    </view>
+  </view>
+
+  <scroll-view scroll-x class="range-scroll" show-scrollbar="false">
+    <button wx:for="{{ranges}}" wx:key="key" class="range-button {{range === item.key ? 'active' : ''}}" data-range="{{item.key}}" bindtap="selectRange">{{item.label}}</button>
+  </scroll-view>
+  <scroll-view wx:if="{{me.role === 'admin' && groups.length > 1}}" scroll-x class="group-scroll" show-scrollbar="false">
+    <button class="group-button {{!group ? 'active' : ''}}" data-group="" bindtap="selectGroup">全部组</button>
+    <button wx:for="{{groups}}" wx:key="id" class="group-button {{group === item.name ? 'active' : ''}}" data-group="{{item.name}}" bindtap="selectGroup">{{item.name}}</button>
+  </scroll-view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在汇总数据</view></view>
+  <view wx:elif="{{errorMessage}}" class="card error-state"><view class="state-title">统计加载失败</view><view class="state-copy">{{errorMessage}}</view></view>
+
+  <block wx:else>
+    <view class="summary-grid">
+      <view wx:for="{{summaryCards}}" wx:key="key" class="summary-card {{item.key}}"><view class="summary-value">{{item.value}}</view><view class="summary-label">{{item.label}}</view></view>
+    </view>
+
+    <view class="section">
+      <view class="section-head"><view class="section-title">任务构成</view></view>
+      <view class="card type-list">
+        <view wx:for="{{byType}}" wx:key="task_type" class="type-row">
+          <view class="type-head"><strong>{{item.task_type}}</strong><text>{{item.orders}} 单 · {{item.timeText}}</text></view>
+          <view class="type-track"><view class="type-fill" style="width: {{item.width}}"></view></view>
+          <view class="type-foot">{{item.averageText}}</view>
+        </view>
+        <view wx:if="{{!byType.length}}" class="empty-state"><view class="state-title">当前区间没有工单</view></view>
+      </view>
+    </view>
+
+    <view wx:if="{{byPerson.length}}" class="section">
+      <view class="section-head"><view class="section-title">人员贡献</view><view class="section-note">点击查看明细</view></view>
+      <view class="card person-list">
+        <button wx:for="{{byPerson}}" wx:key="open_id" class="person-row" data-id="{{item.open_id}}" bindtap="openPerson">
+          <view class="person-rank">{{index + 1}}</view>
+          <view class="person-main"><strong>{{item.name}}</strong><text>{{item.topType || '暂无主要任务'}} · 最近 {{item.lastDate || '—'}}</text></view>
+          <view class="person-number"><strong>{{item.orders}}</strong><text>{{item.timeText}}</text></view>
+        </button>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view wx:if="{{detail}}" class="detail-mask" bindtap="closeDetail">
+  <view class="detail-card" catchtap="stopPropagation">
+    <view class="detail-head"><view><view class="page-kicker">WORK LOG</view><view class="detail-title">{{detail.name}}</view></view><button bindtap="closeDetail">关闭</button></view>
+    <view class="detail-range">{{detail.from}} 至 {{detail.to}}</view>
+    <scroll-view scroll-y class="detail-orders">
+      <view wx:for="{{detail.orders}}" wx:key="id" class="detail-order">
+        <view><strong>{{item.team}} · {{item.task_type}}</strong><text>{{item.date}} {{item.arrive}} · {{item.usedText}}</text></view>
+        <view class="status-pill {{item.status}}">{{item.statusText}}</view>
+      </view>
+      <view wx:if="{{!detail.orders.length}}" class="empty-state"><view class="state-copy">暂无工作明细</view></view>
+    </scroll-view>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="" user="{{me}}"></app-nav>

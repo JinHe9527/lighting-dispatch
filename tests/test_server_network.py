@@ -1,9 +1,23 @@
 import unittest
+from email.message import Message
 
 from app.server import Handler, request_client_ip
 
 
 class ClientIpTests(unittest.TestCase):
+    def test_bearer_token_is_used_as_native_miniprogram_session(self):
+        handler = object.__new__(Handler)
+        handler.headers = Message()
+        handler.headers["Authorization"] = "Bearer native-session-token"
+        handler.headers["Cookie"] = "sid=website-session-token"
+        self.assertEqual(handler._session_id(), "native-session-token")
+
+    def test_cookie_session_remains_available_for_website(self):
+        handler = object.__new__(Handler)
+        handler.headers = Message()
+        handler.headers["Cookie"] = "sid=website-session-token"
+        self.assertEqual(handler._session_id(), "website-session-token")
+
     def test_uses_forwarded_address_from_local_proxy(self):
         self.assertEqual(request_client_ip("127.0.0.1", "203.0.113.10, 10.0.0.1"), "203.0.113.10")
 

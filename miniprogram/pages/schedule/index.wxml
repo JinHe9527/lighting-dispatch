@@ -1,0 +1,66 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">SHIFT PLANNER</view>
+      <view class="page-title">排班日历</view>
+      <view class="page-subtitle">班次调整会同时反映在网站派工台</view>
+    </view>
+  </view>
+
+  <view class="schedule-toolbar">
+    <view class="range-tabs">
+      <button class="range-button {{range === 'day' ? 'active' : ''}}" data-range="day" bindtap="selectRange">单日</button>
+      <button class="range-button {{range === 'week' ? 'active' : ''}}" data-range="week" bindtap="selectRange">本周</button>
+    </view>
+    <view class="date-row">
+      <button class="date-step" data-step="-1" bindtap="moveDate">上一页</button>
+      <picker mode="date" value="{{date}}" bindchange="changeDate"><view class="date-picker">{{date}}</view></picker>
+      <button class="date-step" data-step="1" bindtap="moveDate">下一页</button>
+    </view>
+    <scroll-view wx:if="{{groups.length > 1}}" scroll-x class="group-scroll" show-scrollbar="false">
+      <button class="group-button {{!group ? 'active' : ''}}" data-group="" bindtap="selectGroup">全部组</button>
+      <button wx:for="{{groups}}" wx:key="id" class="group-button {{group === item.name ? 'active' : ''}}" data-group="{{item.name}}" bindtap="selectGroup">{{item.name}}</button>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在计算排班</view></view>
+  <view wx:elif="{{errorMessage}}" class="card error-state"><view class="state-title">排班加载失败</view><view class="state-copy">{{errorMessage}}</view></view>
+
+  <view wx:else class="day-list">
+    <view wx:for="{{days}}" wx:key="date" class="day-section">
+      <view class="day-head">
+        <view class="day-date {{item.today ? 'today' : ''}}">{{item.shortDate}}</view>
+        <view class="day-count">{{item.assignments.length}} 人 · {{item.orders.length}} 张工单</view>
+      </view>
+      <view class="card assignment-card">
+        <button
+          wx:for="{{item.assignments}}"
+          wx:for-item="assignment"
+          wx:key="worker_id"
+          class="assignment-row {{assignment.editable ? 'editable' : ''}}"
+          data-worker="{{assignment.worker_id}}"
+          data-date="{{assignment.date}}"
+          bindtap="editAssignment"
+        >
+          <view class="person-mark">{{assignment.initial}}</view>
+          <view class="assignment-main">
+            <view class="assignment-name">{{assignment.worker_name}}</view>
+            <view class="assignment-group">{{assignment.grp}} · 默认{{assignment.default_shift}}</view>
+          </view>
+          <view class="shift-label {{assignment.is_off || assignment.absence_type ? 'off' : ''}}">{{assignment.shiftText}}</view>
+        </button>
+        <view wx:if="{{!item.assignments.length}}" class="empty-state compact-empty"><view class="state-copy">当天没有人员班次</view></view>
+      </view>
+
+      <view wx:if="{{item.orders.length}}" class="day-orders">
+        <button wx:for="{{item.orders}}" wx:for-item="order" wx:key="id" class="day-order" data-id="{{order.id}}" bindtap="openOrder">
+          <text class="day-order-time">{{order.timeText}}</text>
+          <view class="day-order-main"><strong>{{order.team}}</strong><text>{{order.task_type}} · {{order.assignee_name || '待派工'}}</text></view>
+          <view class="status-pill {{order.status}}">{{order.statusText}}</view>
+        </button>
+      </view>
+    </view>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="schedule" user="{{me}}"></app-nav>

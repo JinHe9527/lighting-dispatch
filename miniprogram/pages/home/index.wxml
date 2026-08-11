@@ -1,0 +1,82 @@
+<view class="page-shell">
+  <view class="page-head home-head">
+    <view>
+      <view class="page-kicker">LIVE OPERATIONS</view>
+      <view class="page-title">今日派工</view>
+      <view wx:if="{{me}}" class="page-subtitle">{{me.name}} · {{roleText}}{{me.grp ? ' · ' + me.grp : ''}}</view>
+    </view>
+    <view wx:if="{{me && me.role !== 'team'}}" class="duty-badge">
+      <view class="duty-dot"></view>
+      <text>在岗 {{onDuty}}</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="card loading-state">
+    <view class="spinner"></view>
+    <view class="state-title">正在同步网站数据</view>
+  </view>
+
+  <view wx:elif="{{errorMessage}}" class="card error-state">
+    <view class="state-title">暂时无法读取数据</view>
+    <view class="state-copy">{{errorMessage}}</view>
+    <button class="secondary-button retry-button" bindtap="load">重新加载</button>
+  </view>
+
+  <block wx:else>
+    <view class="metrics-grid">
+      <view wx:for="{{metrics}}" wx:key="key" class="metric-card {{item.key}}">
+        <view class="metric-value">{{item.value}}</view>
+        <view class="metric-label">{{item.label}}</view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="section-head">
+        <view class="section-title">现场队列</view>
+        <button class="plain-link" data-path="/pages/orders/index" bindtap="navigate">查看全部</button>
+      </view>
+      <view class="card order-stack">
+        <button
+          wx:for="{{activeOrders}}"
+          wx:key="id"
+          class="order-line"
+          data-id="{{item.id}}"
+          bindtap="openOrder"
+        >
+          <view class="order-time">
+            <text>{{item.timeText}}</text>
+            <text>{{item.dateText}}</text>
+          </view>
+          <view class="order-main">
+            <view class="order-title">{{item.team}}</view>
+            <view class="order-copy">{{item.grp}} · {{item.task_type}}</view>
+          </view>
+          <view class="status-pill {{item.status}}">{{item.statusText}}</view>
+        </button>
+        <view wx:if="{{!activeOrders.length}}" class="empty-state compact-empty">
+          <view class="state-title">当前没有进行中的工单</view>
+          <view class="state-copy">网站和小程序的数据已经同步。</view>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{management.length}}" class="section">
+      <view class="section-head"><view class="section-title">管理入口</view></view>
+      <view class="management-grid">
+        <button
+          wx:for="{{management}}"
+          wx:key="key"
+          class="management-card"
+          data-path="{{item.path}}"
+          bindtap="navigate"
+        >
+          <view class="management-index">0{{index + 1}}</view>
+          <view class="management-title">{{item.label}}</view>
+          <view class="management-note">{{item.note}}</view>
+        </button>
+      </view>
+    </view>
+  </block>
+</view>
+
+<app-nav wx:if="{{me}}" active="home" user="{{me}}"></app-nav>

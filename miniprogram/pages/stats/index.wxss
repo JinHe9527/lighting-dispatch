@@ -1,0 +1,41 @@
+.range-scroll,.group-scroll { white-space: nowrap; }
+.range-scroll { margin-bottom: 14rpx; }
+.group-scroll { margin-bottom: 18rpx; }
+.range-button,.group-button { display: inline-flex; align-items: center; justify-content: center; min-height: 60rpx; margin: 0 9rpx 0 0; padding: 0 22rpx; border: 1rpx solid #d8d3c8; border-radius: 999rpx; background: #fffdfa; color: #77756e; font-size: 21rpx; line-height: 1; }
+.range-button.active { border-color: #252720; background: #252720; color: #fffdfa; font-weight: 700; }
+.group-button.active { border-color: #bd7c18; color: #95620f; font-weight: 700; }
+.summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14rpx; }
+.summary-card { min-height: 144rpx; padding: 26rpx; border: 1rpx solid #ddd8cd; border-radius: 22rpx; background: #fffdfa; }
+.summary-card.time { border-color: #292d27; background: #292d27; color: #fffdfa; }
+.summary-value { font-family: Georgia, serif; font-size: 45rpx; font-weight: 700; line-height: 1.1; }
+.summary-label { margin-top: 14rpx; color: #7f7d75; font-size: 21rpx; }
+.summary-card.time .summary-label { color: #b8b8ae; }
+.type-row { padding: 22rpx; border-bottom: 1rpx solid #ebe7de; }
+.type-row:last-child { border-bottom: 0; }
+.type-head { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; }
+.type-head strong { font-size: 24rpx; }
+.type-head text { color: #85837b; font-size: 19rpx; }
+.type-track { height: 12rpx; margin-top: 15rpx; overflow: hidden; border-radius: 999rpx; background: #ebe7de; }
+.type-fill { height: 100%; border-radius: 999rpx; background: #d69731; }
+.type-foot { margin-top: 9rpx; color: #949189; font-size: 18rpx; }
+.person-row { display: grid; grid-template-columns: 48rpx minmax(0, 1fr) auto; align-items: center; gap: 16rpx; width: 100%; min-height: 104rpx; margin: 0; padding: 17rpx 20rpx; border-bottom: 1rpx solid #ebe7de; border-radius: 0; background: transparent; color: #1f211f; text-align: left; line-height: 1.3; }
+.person-row:last-child { border-bottom: 0; }
+.person-rank { color: #c3aa80; font-family: Georgia, serif; font-size: 30rpx; font-weight: 700; }
+.person-main { min-width: 0; }
+.person-main strong,.person-main text,.person-number strong,.person-number text { display: block; }
+.person-main strong { font-size: 25rpx; }
+.person-main text { overflow: hidden; margin-top: 7rpx; color: #85837b; font-size: 19rpx; text-overflow: ellipsis; white-space: nowrap; }
+.person-number { text-align: right; }
+.person-number strong { font-family: Georgia, serif; font-size: 29rpx; }
+.person-number text { margin-top: 5rpx; color: #85837b; font-size: 18rpx; }
+.detail-mask { position: fixed; z-index: 200; inset: 0; display: flex; align-items: flex-end; padding: 28rpx; background: rgba(19, 21, 18, 0.46); }
+.detail-card { width: 100%; max-height: 86vh; padding: 30rpx; border-radius: 30rpx 30rpx 22rpx 22rpx; background: #fffdfa; }
+.detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20rpx; }
+.detail-title { margin-top: 8rpx; font-family: "Songti SC", serif; font-size: 40rpx; font-weight: 700; }
+.detail-head button { width: auto; margin: 0; padding: 10rpx; background: transparent; color: #77756e; font-size: 20rpx; line-height: 1; }
+.detail-range { margin-top: 16rpx; color: #85837b; font-size: 20rpx; }
+.detail-orders { max-height: 62vh; margin-top: 22rpx; }
+.detail-order { display: flex; align-items: center; justify-content: space-between; gap: 18rpx; padding: 20rpx 0; border-bottom: 1rpx solid #ebe7de; }
+.detail-order strong,.detail-order text { display: block; }
+.detail-order strong { font-size: 23rpx; }
+.detail-order text { margin-top: 7rpx; color: #85837b; font-size: 19rpx; }

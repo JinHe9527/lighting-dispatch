@@ -1,0 +1,36 @@
+<view class="page-shell">
+  <view class="page-head">
+    <view>
+      <view class="page-kicker">CREW BOARD</view>
+      <view class="page-title">人员状态</view>
+      <view class="page-subtitle">查看同一套人员在岗、班次和任务状态</view>
+    </view>
+  </view>
+
+  <scroll-view wx:if="{{groups.length > 1}}" scroll-x class="group-scroll" show-scrollbar="false">
+    <button class="group-button {{!group ? 'active' : ''}}" data-group="" bindtap="selectGroup">全部组</button>
+    <button wx:for="{{groups}}" wx:key="id" class="group-button {{group === item.name ? 'active' : ''}}" data-group="{{item.name}}" bindtap="selectGroup">{{item.name}}</button>
+  </scroll-view>
+
+  <view wx:if="{{loading}}" class="card loading-state"><view class="spinner"></view><view class="state-title">正在读取人员状态</view></view>
+  <view wx:else class="card people-card">
+    <button
+      wx:for="{{people}}"
+      wx:key="open_id"
+      class="person-row {{item.editable ? 'editable' : ''}}"
+      data-id="{{item.open_id}}"
+      bindtap="editStatus"
+    >
+      <view class="person-avatar">{{item.initial}}</view>
+      <view class="person-main">
+        <view class="person-name">{{item.name}}<text wx:if="{{item.lead}}">组长</text><text wx:if="{{item.intern}}">实习</text></view>
+        <view class="person-shift">{{item.grp}} · {{item.shiftText}}</view>
+        <view wx:if="{{item.task}}" class="person-task">{{item.task}}</view>
+      </view>
+      <view class="person-status {{item.status}}">{{item.statusText}}</view>
+    </button>
+    <view wx:if="{{!people.length}}" class="empty-state"><view class="state-title">当前分组没有人员</view></view>
+  </view>
+</view>
+
+<app-nav wx:if="{{me}}" active="" user="{{me}}"></app-nav>
