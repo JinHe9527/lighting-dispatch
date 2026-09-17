@@ -364,7 +364,7 @@ def init_db():
     if TEST_MODE:
         if conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"] == 0:
             conn.execute(
-                "INSERT INTO teams(name,room,rehearsal,onair) VALUES('测试团队','测试直播间','','')"
+                "INSERT INTO teams(name,room,rehearsal,onair) VALUES('测试团队','101号直播间','','')"
             )
         for profile in TEST_PROFILES.values():
             conn.execute(
