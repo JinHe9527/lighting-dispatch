@@ -12,34 +12,11 @@
 }
 
 .brand-mark {
-  position: relative;
+  display: block;
   width: 104rpx;
   height: 104rpx;
   margin: 0 auto 24rpx;
-  border-radius: 24rpx 24rpx 34rpx 34rpx;
-  background: #22241f;
-  box-shadow: 0 18rpx 42rpx rgba(30, 32, 28, 0.2);
-}
-
-.lamp-cap {
-  position: absolute;
-  left: 26rpx;
-  top: 25rpx;
-  width: 52rpx;
-  height: 23rpx;
-  border-radius: 24rpx 24rpx 7rpx 7rpx;
-  background: #fffdfa;
-}
-
-.lamp-light {
-  position: absolute;
-  left: 34rpx;
-  top: 55rpx;
-  width: 36rpx;
-  height: 25rpx;
-  border-radius: 4rpx 4rpx 20rpx 20rpx;
-  background: #e7a63c;
-  box-shadow: 0 6rpx 20rpx rgba(231, 166, 60, 0.5);
+  border-radius: 24rpx;
 }
 
 .brand-kicker {

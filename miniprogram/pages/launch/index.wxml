@@ -1,11 +1,8 @@
 <view class="launch-page">
   <view class="brand">
-    <view class="brand-mark" aria-hidden="true">
-      <view class="lamp-cap"></view>
-      <view class="lamp-light"></view>
-    </view>
-    <view class="brand-kicker">WUY◦DISPATCH</view>
-    <view class="brand-name">团播派工</view>
+    <image class="brand-mark" src="/assets/avatar.jpg" mode="aspectFill" aria-hidden="true" />
+    <view class="brand-kicker">灯光排班与派工</view>
+    <view class="brand-name">点个灯光</view>
     <view class="brand-copy">网站与小程序，共用同一份排期数据</view>
   </view>
 

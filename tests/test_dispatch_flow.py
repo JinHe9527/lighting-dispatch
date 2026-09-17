@@ -2004,6 +2004,14 @@ class DispatchFlowTests(unittest.TestCase):
             ],
         )
         self.assertEqual(app_config["sitemapLocation"], "sitemap.json")
+        project_config = json.loads((mini_root / "project.config.json").read_text(encoding="utf-8"))
+        launch_config = json.loads((mini_root / "pages/launch/index.json").read_text(encoding="utf-8"))
+        self.assertEqual(project_config["description"], "点个灯光微信小程序")
+        self.assertEqual(launch_config["navigationBarTitleText"], "点个灯光")
+        launch_markup = (mini_root / "pages/launch/index.wxml").read_text(encoding="utf-8")
+        self.assertIn('class="brand-name">点个灯光</view>', launch_markup)
+        self.assertIn('src="/assets/avatar.jpg"', launch_markup)
+        self.assertTrue((mini_root / "assets/avatar.jpg").read_bytes().startswith(b"\xff\xd8\xff"))
         for page in app_config["pages"]:
             for suffix in (".js", ".json", ".wxml", ".wxss"):
                 self.assertTrue((mini_root / f"{page}{suffix}").is_file())
