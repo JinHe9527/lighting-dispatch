@@ -90,6 +90,7 @@ npm run test:ui
 
 ## 部署与验收
 
+- [公司服务器自动部署与验收记录](docs/CI与部署.md)：main push → 测试 → 受限 SSH 发布；公网仍关闭。
 - [应用部署说明](app/README.md)
 - [飞书后台配置指引](docs/飞书后台配置指引.md)
 - [微信小程序配置指引](docs/微信小程序配置指引.md)
