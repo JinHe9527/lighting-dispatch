@@ -764,19 +764,28 @@ async function auditMobileAccount(page, profile) {
   }
   const quickOrderRoomPriority = await admin.evaluate(() => {
     const person = state.staff.find(item => item.open_id === "test:staff");
-    const owned = state.teams.slice(0, 2);
-    owned.forEach(team => { team.lighting_owner_id = person.open_id; });
-    reqTeam = state.teams[2].name;
-    openQuickOrder(person.open_id, { date: addDaysStr(5), at: "15:00" });
-    const select = document.getElementById("qsTeam");
-    const result = {
-      selected: select.value,
-      firstTwo: [...select.options].slice(0, 2).map(option => option.value),
-      expected: owned.map(team => team.name),
-      ownerNote: document.getElementById("qsOwnerNote")?.textContent || "",
-    };
-    closeQuick();
-    return result;
+    const previousTeams = state.teams;
+    const previousReqTeam = reqTeam;
+    state.teams = [
+      { ...previousTeams[0], id: -1, name: "非本职直播间", lighting_owner_id: "" },
+      { ...previousTeams[0], id: -2, name: "本职直播间一", lighting_owner_id: person.open_id },
+      { ...previousTeams[0], id: -3, name: "本职直播间二", lighting_owner_id: person.open_id },
+    ];
+    try {
+      reqTeam = state.teams[0].name;
+      openQuickOrder(person.open_id, { date: addDaysStr(5), at: "15:00" });
+      const select = document.getElementById("qsTeam");
+      return {
+        selected: select.value,
+        firstTwo: [...select.options].slice(0, 2).map(option => option.value),
+        expected: state.teams.slice(1).map(team => team.name),
+        ownerNote: document.getElementById("qsOwnerNote")?.textContent || "",
+      };
+    } finally {
+      closeQuick();
+      state.teams = previousTeams;
+      reqTeam = previousReqTeam;
+    }
   });
   if (quickOrderRoomPriority.selected !== quickOrderRoomPriority.expected[0] ||
       JSON.stringify(quickOrderRoomPriority.firstTwo) !== JSON.stringify(quickOrderRoomPriority.expected) ||
