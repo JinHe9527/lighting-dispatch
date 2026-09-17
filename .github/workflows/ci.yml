@@ -1,0 +1,175 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.4.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install JavaScript dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Python and deployment script syntax
+        run: |
+          python3 -m py_compile app/server.py app/business.py app/service.py scripts/deploy/release.py
+          python3 -c 'import plistlib; plistlib.load(open("scripts/deploy/com.yuesai.dispatch.plist", "rb"))'
+          bash -n scripts/deploy/install-linux.sh scripts/deploy/install.sh scripts/deploy/host-bootstrap.sh
+
+      - name: Run Python tests
+        run: pnpm test
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser smoke test
+        shell: bash
+        run: |
+          export DISPATCH_TEST_MODE=1
+          export DISPATCH_HOST=127.0.0.1
+          export DISPATCH_PORT=18848
+          export DISPATCH_DB_PATH="$RUNNER_TEMP/dispatch-ui.db"
+          export DISPATCH_DATA_DIR="$RUNNER_TEMP/dispatch-ui-data"
+          export DISPATCH_BACKUP_DIR="$RUNNER_TEMP/dispatch-ui-backups"
+          CHROME_PATH="$(node -p "require('playwright').chromium.executablePath()")"
+          export CHROME_PATH
+          python3 app/server.py >"$RUNNER_TEMP/dispatch-ui.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --connect-timeout 2 --max-time 5 \
+              http://127.0.0.1:18848/api/health >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              sed -n '1,240p' "$RUNNER_TEMP/dispatch-ui.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          pnpm test:ui
+
+      - name: Build Linux release archive
+        shell: bash
+        run: |
+          mkdir -p release/app/vendor release/scripts/deploy release/docs
+          cp app/server.py app/business.py app/service.py app/index.html release/app/
+          cp app/manifest.webmanifest app/app-icon.svg app/app-icon-180.png \
+            app/app-icon-192.png app/app-icon-512.png release/app/
+          cp app/vendor/lucide.min.js release/app/vendor/
+          cp scripts/deploy/install-linux.sh scripts/deploy/wuyou-dispatch.service \
+            scripts/deploy/nginx-wuyou-dispatch.conf scripts/deploy/fail2ban-sshd.local \
+            scripts/deploy/ssh-wuyou-dispatch.conf release/scripts/deploy/
+          cp README.md .env.example release/
+          cp docs/*.md release/docs/
+          tar -czf lighting-dispatch-linux.tar.gz -C release .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lighting-dispatch-linux-${{ github.sha }}
+          path: lighting-dispatch-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build verified application-only archive
+        run: |
+          python3 scripts/deploy/release.py build . "$GITHUB_SHA" \
+            "lighting-dispatch-app-$GITHUB_SHA.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lighting-dispatch-app-${{ github.sha }}
+          path: |
+            lighting-dispatch-app-${{ github.sha }}.tar.gz
+            lighting-dispatch-app-${{ github.sha }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy:
+    needs: test
+    permissions:
+      contents: read
+      actions: read
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SERVER_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: lighting-dispatch-app-${{ github.sha }}
+          path: ${{ runner.temp }}/release
+      - name: Publish through restricted SSH
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVER_HOST: ${{ vars.SERVER_HOST }}
+          SERVER_PORT: ${{ vars.SERVER_PORT || '22' }}
+          SERVER_USER: ${{ vars.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_KNOWN_HOSTS: ${{ secrets.SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$SERVER_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$SERVER_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( SERVER_PORT >= 1 && SERVER_PORT <= 65535 ))
+          [[ "$SERVER_USER" == wuyou-deploy ]]
+          latest="$(timeout 30 gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [[ "$GITHUB_SHA" != "$latest" ]]; then
+            echo "Skipped superseded commit $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          archive="$RUNNER_TEMP/release/lighting-dispatch-app-$GITHUB_SHA.tar.gz"
+          python3 scripts/deploy/release.py verify "$archive" "$GITHUB_SHA"
+          [[ -n "$SERVER_SSH_KEY" && -n "$SERVER_KNOWN_HOSTS" ]]
+          install -d -m 0700 "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$SERVER_SSH_KEY" > "$RUNNER_TEMP/ssh/id"
+          printf '%s\n' "$SERVER_KNOWN_HOSTS" > "$RUNNER_TEMP/ssh/known_hosts"
+          chmod 0600 "$RUNNER_TEMP/ssh/id" "$RUNNER_TEMP/ssh/known_hosts"
+          ssh-keygen -y -f "$RUNNER_TEMP/ssh/id" >/dev/null
+          lookup="$SERVER_HOST"
+          [[ "$SERVER_PORT" == 22 ]] || lookup="[$SERVER_HOST]:$SERVER_PORT"
+          ssh-keygen -F "$lookup" -f "$RUNNER_TEMP/ssh/known_hosts" >/dev/null
+          ssh_options=( -F /dev/null -i "$RUNNER_TEMP/ssh/id" -p "$SERVER_PORT"
+            -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh/known_hosts" )
+          digest="$(python3 scripts/deploy/release.py digest scripts/deploy/wuyou-dispatch.service)"
+          protocol="$(timeout 30 ssh "${ssh_options[@]}" "$SERVER_USER@$SERVER_HOST" "protocol $digest")"
+          [[ "$protocol" == "wuyou-deploy-protocol=1 ops-digest=$digest" ]]
+          timeout 300 ssh "${ssh_options[@]}" "$SERVER_USER@$SERVER_HOST" "upload $GITHUB_SHA archive" < "$archive"
+          timeout 30 ssh "${ssh_options[@]}" "$SERVER_USER@$SERVER_HOST" "upload $GITHUB_SHA checksum" < "$archive.sha256"
+          protocol="$(timeout 30 ssh "${ssh_options[@]}" "$SERVER_USER@$SERVER_HOST" "protocol $digest")"
+          [[ "$protocol" == "wuyou-deploy-protocol=1 ops-digest=$digest" ]]
+          timeout 600 ssh "${ssh_options[@]}" "$SERVER_USER@$SERVER_HOST" "deploy $GITHUB_SHA"
+          echo "Deployed $GITHUB_SHA through restricted SSH; public ingress unchanged." >> "$GITHUB_STEP_SUMMARY"

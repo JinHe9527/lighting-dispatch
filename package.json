@@ -2,6 +2,7 @@
   "name": "wuyou-dispatch",
   "private": true,
   "scripts": {
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
     "test:ui": "node tests/ui_smoke.cjs"
   },
   "devDependencies": {

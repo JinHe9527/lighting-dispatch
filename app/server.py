@@ -91,6 +91,8 @@ HOST = os.environ.get("DISPATCH_HOST", "0.0.0.0")
 PORT = int(os.environ.get("DISPATCH_PORT", "8848"))
 TEST_MODE = os.environ.get("DISPATCH_TEST_MODE", "").strip().lower() in ("1", "true", "yes", "on")
 SERVER_VERSION = "v0806a"  # 与 index.html 的 APP_VERSION 同步改;前端会校验,不一致提示重启服务
+RELEASE_REVISION = (PROJECT / "RELEASE").read_text(encoding="ascii").strip() \
+    if (PROJECT / "RELEASE").is_file() else "development"
 DATA_ROOT = Path(os.environ.get("DISPATCH_DATA_DIR", "").strip()) if os.environ.get("DISPATCH_DATA_DIR", "").strip() \
     else ROOT
 DB_PATH = Path(os.environ.get("DISPATCH_DB_PATH", "").strip()) if os.environ.get("DISPATCH_DB_PATH", "").strip() \
@@ -360,6 +362,10 @@ def init_db():
         conn.execute("INSERT INTO settings(k,v) VALUES('bootstrap_code',?)", (code,))
         conn.execute("INSERT OR REPLACE INTO settings(k,v) VALUES('bootstrap_used','0')")
     if TEST_MODE:
+        if conn.execute("SELECT COUNT(*) c FROM teams").fetchone()["c"] == 0:
+            conn.execute(
+                "INSERT INTO teams(name,room,rehearsal,onair) VALUES('测试团队','测试直播间','','')"
+            )
         for profile in TEST_PROFILES.values():
             conn.execute(
                 """INSERT OR IGNORE INTO users(
@@ -3175,6 +3181,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200 if healthy else 503, {
                         "ok": healthy,
                         "version": SERVER_VERSION,
+                        "revision": RELEASE_REVISION,
                         "db": "ok",
                         "scheduler": "ok" if scheduler_ok else ("starting" if scheduler_starting else "stale"),
                         "pending": pending,
@@ -3184,7 +3191,7 @@ class Handler(BaseHTTPRequestHandler):
                         "free_mb": free_mb,
                     })
                 except Exception:
-                    return self._send(503, {"ok": False, "version": SERVER_VERSION, "db": "error"})
+                    return self._send(503, {"ok": False, "version": SERVER_VERSION, "revision": RELEASE_REVISION, "db": "error"})
             if path.startswith("/media/"):
                 return self._serve_media(path)
             if path == "/api/me":

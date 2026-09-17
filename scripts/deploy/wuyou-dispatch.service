@@ -2,6 +2,7 @@
 Description=无忧排班服务
 Wants=network-online.target
 After=network-online.target
+ConditionPathExists=/opt/wuyou-dispatch/current/app/server.py
 
 [Service]
 Type=simple
@@ -22,6 +23,8 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadWritePaths=/var/lib/wuyou-dispatch /var/backups/wuyou-dispatch
+MemoryMax=512M
+TasksMax=128
 LimitNOFILE=65536
 
 [Install]

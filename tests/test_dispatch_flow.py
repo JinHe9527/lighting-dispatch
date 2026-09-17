@@ -15,6 +15,10 @@ from app import server  # noqa: E402
 
 
 class DispatchFlowTests(unittest.TestCase):
+    def test_clean_test_mode_seeds_team_and_binds_profile(self):
+        self.assertEqual(self.team_row["name"], "测试团队")
+        self.assertEqual(self.team["team_id"], self.team_row["id"])
+
     @classmethod
     def setUpClass(cls):
         server.init_db()
