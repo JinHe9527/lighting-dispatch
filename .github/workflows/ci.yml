@@ -120,7 +120,6 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SERVER_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: production
     steps:
       - uses: actions/checkout@v4
         with:

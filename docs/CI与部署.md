@@ -10,7 +10,10 @@
 - 当前 80 项 Python 测试通过，包含发布包、失败回滚和远端已有微信账户用例；
   微信/飞书外部调用采用测试替代，不代表真实供应商认证通过。
 - 用户已将仓库改为私有，GitHub API 已复核 `isPrivate=true`；源码可见性阻塞已解除。
-  独立发布公钥已安装，新机真实受限 SSH 协议验证通过；正在接入 GitHub 发布配置。
+  独立发布公钥已安装，新机真实受限 SSH 协议验证通过；两个仓库级 Secrets 和主机变量已配置。
+- 首次真实 CI `35195576295` 在依赖缓存阶段发现远端缺少 `pnpm-lock.yaml`，本次补入固定版本锁文件。
+  新建 `production` 环境返回 404，查询确认仓库没有任何环境；移除本轮新增但未生效的环境依赖，
+  使用仓库级 Secrets，不移除既有审批规则。发布仍要求 main push、测试成功、开关开启和受限 SSH 校验。
 
 后续仍需真实 GitHub CI、自动发布与新机应用验收。
 不得 force push 覆盖远端功能。
@@ -44,7 +47,8 @@ CI 使用 Python 3.12、Node.js 22 和 pnpm 11.4，执行：
 ### 公司新机发布准备（2026-09-17）
 
 新机 `123.206.229.200` 已运行金河分镜。12:48 CST 安装了无忧排班运行账号、发布账号、
-固定发布命令与 systemd；排班单元为 `enabled/inactive`，尚无应用版本、SSH 发布密钥或自动部署。
+固定发布命令与 systemd；15:46 CST 排班单元仍为 `enabled/inactive`，尚无应用版本。
+独立 SSH 发布密钥已安装并通过实际 SSH 协议验证，GitHub 自动发布待本轮 CI 验收。
 域名继续停用。不要在新机直接运行下文旧的 `install-linux.sh`：它会修改 SSH、启用 Nginx 并开放公网端口。
 受限自动发布必须只更新应用，不能允许 CI 安装包覆盖主机服务或网络配置。
 
@@ -91,10 +95,10 @@ sudo bash scripts/deploy/host-bootstrap.sh /path/to/wuyou-deploy.pub
 不安装 Nginx、不修改 SSH 主配置或防火墙。空的飞书凭据表示尚未开通真实登录；管理员另行填写
 `/etc/wuyou-dispatch.env`。没有导入旧账号、旧数据库或旧附件。
 
-本次使用不带公钥参数的初始化。主机上的运维摘要为
+首次使用不带公钥参数的初始化，随后另行安装独立发布公钥。主机上的运维摘要为
 `4e6ff14580869aaac2a7305fd4d71fb3d7d0ec49a2954059dd1ef74c2d560366`。
 以 `sudo -u wuyou-deploy` 验证协议返回、拒绝任意 `id` 命令；sudoers 仅允许重启/停止本服务，
-`dispatch` 不能写应用目录。这证明本机权限与命令约束，不等于已通过真实 SSH 密钥认证。
+`dispatch` 不能写应用目录。随后使用独立密钥以 `wuyou-deploy` 登录，真实 SSH 协议验证通过。
 
 发布密钥由 `restrict,command=...` 限制为 `protocol`、`upload <SHA> archive|checksum`、
 `deploy <SHA>`。上传与发布共用非阻塞锁，600 秒触发中断；切换后的失败会尝试回滚，
@@ -109,7 +113,7 @@ sudo bash scripts/deploy/host-bootstrap.sh /path/to/wuyou-deploy.pub
 | `SERVER_HOST` | Variable | `123.206.229.200` |
 | `SERVER_PORT` | Variable | `22` |
 | `SERVER_USER` | Variable | `wuyou-deploy` |
-| `SERVER_DEPLOY_ENABLED` | Variable | 完成接入验收后设 `true`；当前未开启 |
+| `SERVER_DEPLOY_ENABLED` | Variable | 设 `true` 启用 main 自动发布；停发设 `false` |
 | `SERVER_SSH_KEY` | Secret | 无忧排班独立受限私钥 |
 | `SERVER_KNOWN_HOSTS` | Secret | 从可信控制台核对的新机 SSH 公钥 |
 
@@ -123,8 +127,8 @@ CI 校验应用包和主机运维摘要，通过受限 SSH 投递。服务器校
 修改 `release.py` 或 systemd 单元后，先在主机更新这两份文件；摘要不匹配会拒绝发布。
 域名、HTTPS、飞书应用及真实账户验收不随代码 push 自动开通。
 
-测试不等于新机验收：本地回滚测试替代了 systemd 与健康探针；真实 SSH 发布及 GitHub
-自动发布仍需在代码可见性确定后执行。此前 47 项测试与临时包浏览器记录属于旧本地基线，
+测试不等于新机验收：本地回滚测试替代了 systemd 与健康探针；实际应用发布及 GitHub
+自动发布仍待验收。此前 47 项测试与临时包浏览器记录属于旧本地基线，
 不得用作当前 `v0806a` 的浏览器验收结果。
 
 当前验收：80 项 Python 测试、Bootstrap ShellCheck、工作流 YAML/Bash/ShellCheck 通过。
