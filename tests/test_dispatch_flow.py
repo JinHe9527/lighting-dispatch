@@ -15,6 +15,12 @@ from app import server  # noqa: E402
 
 
 class DispatchFlowTests(unittest.TestCase):
+    def test_login_page_uses_company_icp_filing(self):
+        source = (Path(server.ROOT) / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="https://beian.miit.gov.cn/"', source)
+        self.assertIn("蜀ICP备2026056101号-1", source)
+        self.assertNotIn("蜀ICP备2026042831号", source)
+
     def test_clean_test_mode_seeds_team_and_binds_profile(self):
         self.assertEqual(self.team_row["name"], "测试团队")
         self.assertEqual(self.team_row["room"], "101号直播间")
