@@ -1,6 +1,23 @@
 # CI 与部署
 
-## 当前部署状态（2026-09-17 16:04 CST）
+## 公网恢复（2026-09-20）
+
+- 腾讯云企业网站备案已通过：`wuyoupaiban.cn` 为 **蜀ICP备2026056101号-1**。
+  原个人备案号不再使用；登录页已链接工信部备案首页。
+- DNSPod 的 `@ A` 已从旧机改为 `123.206.229.200` 并启用，TTL 保持 600；没有修改 NS 或邮件记录。
+- 发布版本 `7b7eb145f5d2ea92703e0a885fbb50395b67590f`。本次 CI 的 Python 测试、浏览器冒烟及
+  Linux 打包通过，但上传制品遇到 GitHub Actions 存储配额上限，自动部署被跳过。
+  使用同一提交的 `release.py build/verify` 生成应用包，经主机运维摘要校验及既有受限发布入口
+  手工发布；服务健康响应 revision 与发布 SHA 一致。未关闭测试或绕过包校验。
+- Nginx 使用仓库站点模板，80 跳转 HTTPS，443 反向代理 `127.0.0.1:8848`。
+  Let's Encrypt 证书有效期至 2026-12-19，续期定时器及 `renew --dry-run --run-deploy-hooks`
+  已验证成功，续期后自动校验并重载 Nginx。浏览器真实打开首页，显示新备案号；
+  外部 HTTPS 校验通过，匿名 `/api/state` 返回 401，`/auth/test` 返回 404。
+- 飞书真实登录仍未配置，页面显示“等待飞书配置”。本次不等于真实派工、微信登录、
+  通知、小程序审核或支付验收通过；不启用测试登录，不恢复旧业务库。
+- GitHub 自动部署配置保留，制品配额问题仍须处理；不能把本次手工发布称为自动部署成功。
+
+## 历史部署状态（2026-09-17 16:04 CST）
 
 - 普通 main push `780fcf70d0b803f3ba3c9eb6b36b947e030d3754` 触发
   [CI 35197411133](https://github.com/JinHe9527/lighting-dispatch/actions/runs/35197411133)：
@@ -75,7 +92,7 @@ CI 使用 Python 3.12、Node.js 22 和 pnpm 11.4，执行：
 
 新机 `123.206.229.200` 已运行金河分镜。12:48 CST 安装了无忧排班运行账号、发布账号、
 固定发布命令与 systemd；独立 SSH 发布密钥随后安装，16:02 CST 已由 GitHub 自动发布启动应用。
-域名继续停用。不要在新机直接运行下文旧的 `install-linux.sh`：它会修改 SSH、启用 Nginx 并开放公网端口。
+当时域名继续停用；2026-09-20 的恢复结果见本文首节。不要在新机直接运行下文旧的 `install-linux.sh`：它会修改 SSH、启用 Nginx 并开放公网端口。
 受限自动发布必须只更新应用，不能允许 CI 安装包覆盖主机服务或网络配置。
 
 `lighting-dispatch-app-<40位SHA>.tar.gz` 只含以下文件，另附外层 `.sha256`：
@@ -275,7 +292,10 @@ sudo sshd -t
 
 ### HTTPS
 
-仓库中的 `nginx-wuyou-dispatch.conf` 只监听 80 端口，适用于上游负载均衡器已经终止 TLS 的场景。直接把主机暴露到公网时，必须补充证书、443 监听和 HTTP 到 HTTPS 跳转，再把 `DISPATCH_BASE_URL` 设置为同一 HTTPS 地址。
+仓库中的 `nginx-wuyou-dispatch.conf` 监听 80/443，使用 `/etc/letsencrypt/live/wuyoupaiban.cn/`
+下的证书和私钥，并把 HTTP 跳转到 HTTPS。启用前先用 `/var/www/html` 的 ACME webroot 签发证书，
+再执行 `nginx -t` 和 reload；`DISPATCH_BASE_URL` 应为 `https://wuyoupaiban.cn`。
+Certbot 续期成功后需执行 `nginx -t && systemctl reload nginx`，并验证续期演练。
 
 在 HTTPS 未生效前，不要验收 OAuth 登录，也不要让真实账号使用系统。应用只会在 `DISPATCH_BASE_URL` 以 `https://` 开头时写入 Secure Cookie 和 HSTS。
 
