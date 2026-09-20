@@ -96,7 +96,7 @@ jobs:
           name: lighting-dispatch-linux-${{ github.sha }}
           path: lighting-dispatch-linux.tar.gz
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
       - name: Build verified application-only archive
         run: |
@@ -110,7 +110,7 @@ jobs:
             lighting-dispatch-app-${{ github.sha }}.tar.gz
             lighting-dispatch-app-${{ github.sha }}.tar.gz.sha256
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
   deploy:
     needs: test
